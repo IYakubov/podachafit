@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1D4E9E">
+<meta name="description" content="Подача — находи соперников по настольному теннису, бросай вызовы и поднимайся в рейтинге.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Podacha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+/* Layout: one screen per view, no page scroll. Phone: content + bottom tabs. PC: left rail + two big panels. */
+:root{
+  --bg:#1D4E9E; --bg-2:#17428A; --line-w:rgba(255,255,255,.22);
+  --on-bg:#FFFFFF; --on-bg-2:rgba(255,255,255,.74);
+  --navy:#0E2757; --navy-2:#0A1C42;
+  --card:#FFFFFF; --soft:#E8EEF7; --ink:#0B1630; --muted:#5F6C85; --line:#D8E0EC; --sheet:#F3F6FB;
+  --table:#0E2757; --table-2:#0A1C42; --on-table:#FFFFFF; --on-table-2:rgba(255,255,255,.72);
+  --ball:#F26A1E; --ball-ink:#FFFFFF; --ball-soft:#FDE6D8;
+  --win:#14834F; --loss:#C3392E; --err-on-bg:#FFD3CA;
+  --scrim:rgba(4,10,26,.55);
+  --f-big:'Unbounded','Manrope',system-ui,sans-serif;
+  --f-body:'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{background:radial-gradient(120% 90% at 50% 0%,var(--bg),var(--bg-2));color:var(--on-bg);font-family:var(--f-body);font-size:18px;line-height:1.35;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--ball);outline-offset:2px;border-radius:10px}
+h1,h2{font-family:var(--f-big);margin:0;line-height:1.05;letter-spacing:-.01em;text-wrap:balance}
+p{margin:0}
+.num{font-variant-numeric:tabular-nums}
+
+#app{height:100%;display:flex;position:relative;z-index:1}
+@media (max-width:899px){body.in::after{bottom:calc(80px + env(safe-area-inset-bottom,0px))}}
+/* table lines: white edge + centre line, like a real table seen from above */
+body::after{content:"";position:fixed;inset:max(12px,env(safe-area-inset-top,0px)) 12px 12px;border:3px solid var(--line-w);border-radius:4px;pointer-events:none;z-index:0;background:linear-gradient(to right,transparent calc(50% - 1.5px),var(--line-w) calc(50% - 1.5px),var(--line-w) calc(50% + 1.5px),transparent calc(50% + 1.5px))}
+
+/* ---------- buttons ---------- */
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:62px;border:0;border-radius:20px;font-weight:800;font-size:1.1rem;transition:transform .1s,filter .15s}
+.btn:active{transform:scale(.98)}
+.btn.main{background:var(--ball);color:var(--ball-ink)}
+.btn.main:hover{filter:brightness(1.06)}
+.btn.alt{background:var(--soft);color:var(--ink)}
+.btn.ghost{background:rgba(255,255,255,.14);color:var(--on-bg)}
+.btn.ghost:hover{background:rgba(255,255,255,.22)}
+.btn.link{background:none;min-height:44px;color:var(--on-bg-2);font-weight:700;font-size:1rem}
+.btn.sm{width:auto;flex:none;min-height:48px;padding:0 18px;border-radius:16px;font-size:1rem}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* ---------- auth ---------- */
+.auth{flex:1;display:grid;grid-template-rows:1fr auto;height:100%}
+.auth-top{color:var(--on-bg);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-block:40px 8px;padding-left:max(32px,env(safe-area-inset-left,0px));padding-right:max(32px,env(safe-area-inset-right,0px))}
+.auth-top>*{position:relative}
+.logo{display:flex;align-items:baseline;margin-bottom:6px;font-family:var(--f-big);font-weight:800;font-size:1.3rem;letter-spacing:-.01em}
+.logo .dot{width:.42em;height:.42em;margin:0 .1em;box-shadow:inset -.08em -.08em 0 rgba(0,0,0,.18);align-self:baseline}
+.logo .brand{display:block;height:58px;width:auto;max-width:100%}
+.rail .logo .brand{height:44px}
+.dot{width:26px;height:26px;border-radius:50%;background:var(--ball);box-shadow:inset -5px -5px 0 rgba(0,0,0,.15);flex:none}
+.auth-top h1{font-size:clamp(2.4rem,8vw,4.2rem);font-weight:800}
+.auth-top p{color:var(--on-table-2);font-size:1.1rem;font-weight:600}
+.ball{position:absolute;top:22%;right:18%;width:42px;height:42px;border-radius:50%;background:var(--ball);box-shadow:inset -8px -8px 0 rgba(0,0,0,.15);animation:bounce 1.6s cubic-bezier(.5,0,.5,1) infinite alternate}
+@keyframes bounce{from{transform:translateY(-30px)}to{transform:translateY(40px)}}
+@media (prefers-reduced-motion:reduce){.ball{animation:none}}
+.auth-bottom{display:flex;flex-direction:column;gap:12px;padding-block:24px calc(32px + env(safe-area-inset-bottom,0px));padding-left:max(32px,env(safe-area-inset-left,0px));padding-right:max(32px,env(safe-area-inset-right,0px));width:100%;max-width:520px;margin:0 auto}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.9rem;font-weight:700;color:var(--muted)}
+.input{width:100%;height:60px;border-radius:18px;border:2px solid var(--line);background:var(--card);color:var(--ink);padding:0 18px;font-size:1.1rem;font-weight:600}
+select.input{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 26px) 50%,calc(100% - 19px) 50%;background-size:7px 7px;background-repeat:no-repeat;padding-right:48px}
+select.input:invalid{color:var(--muted)}
+.auth .input{border-color:transparent}
+.input:focus{outline:none;border-color:var(--ball)}
+.err{color:var(--err-on-bg);font-weight:700;font-size:.95rem;min-height:1.3em}
+.form-title{font-family:var(--f-big);font-size:1.5rem;font-weight:700}
+
+/* ---------- shell ---------- */
+.rail{display:none}
+.screen{flex:1;display:flex;flex-direction:column;min-width:0;height:100%}
+.view{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;padding-block:32px 28px;padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(30px,env(safe-area-inset-right,0px));width:100%;max-width:1100px;margin:0 auto;overflow:hidden}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.tabs button{border:0;background:none;height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--on-bg-2);font-weight:700;font-size:.78rem;position:relative}
+.tabs button svg{width:26px;height:26px}
+.tabs button[aria-current]{color:var(--on-bg)}
+.tabs button[aria-current] svg{color:var(--ball)}
+.tag{position:absolute;top:10px;left:calc(50% + 6px);min-width:20px;height:20px;border-radius:10px;background:var(--ball);color:var(--ball-ink);font-size:.72rem;font-weight:800;display:grid;place-items:center;padding:0 5px}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.top h1{font-size:clamp(1.6rem,5.5vw,2.2rem);font-weight:700}
+.hello{color:var(--on-bg-2);font-weight:700;font-size:1rem}
+
+/* rating hero */
+.hero{background:linear-gradient(160deg,var(--navy),var(--navy-2));color:var(--on-table);border-radius:26px;padding:24px 26px 22px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;position:relative;overflow:hidden}
+.hero>*{position:relative;z-index:1}
+.hero .lbl{font-size:.78rem;font-weight:700;color:var(--on-table-2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}
+.hero .big{font-family:var(--f-big);font-size:clamp(3.4rem,15vw,5.2rem);font-weight:800;line-height:.95}
+.hero .side{text-align:right;display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:.9rem;color:var(--on-table-2);padding-bottom:4px;min-width:0}
+.hero .side b{font-family:var(--f-big);font-size:1.3rem;color:var(--on-table)}
+
+.sec-title{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px}
+.sec-title h2{font-size:1.25rem;font-weight:700}
+.sec-title button{border:0;background:none;color:var(--on-bg);font-weight:800;font-size:1rem}
+.list{display:flex;flex-direction:column;gap:10px;min-height:0}
+.item{display:flex;align-items:center;gap:14px;background:var(--card);color:var(--ink);border-radius:20px;padding:13px 14px;min-height:78px}
+.item.hot{box-shadow:inset 0 0 0 2.5px var(--ball)}
+.av svg{width:100%;height:100%;display:block}
+.av:has(svg){background:#FFFFFF;border:1.5px solid #14110F}
+.av{--h:210;width:50px;height:50px;border-radius:50%;overflow:hidden;flex:none;display:grid;place-items:center;box-sizing:border-box;font-family:var(--f-big);font-weight:700;font-size:1rem;background:hsl(var(--h) 65% var(--avl,90%));color:hsl(var(--h) 60% var(--avd,30%))}
+.item .txt{flex:1;min-width:0}
+.item .nm{font-weight:800;font-size:1.08rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .nm{margin-bottom:2px}
+.item .sub{color:var(--muted);font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;color:var(--on-bg-2);font-weight:600;padding:20px}
+.empty b{font-family:var(--f-big);color:var(--on-bg);font-size:1.25rem;font-weight:700}
+
+/* rating list */
+.board{background:var(--card);color:var(--ink);border-radius:24px;padding:6px 18px;display:flex;flex-direction:column;overflow:hidden}
+.rank-row{display:flex;align-items:center;gap:14px;padding:12px 2px;border-bottom:1.5px solid var(--line)}
+.rank-row:last-child{border-bottom:0}
+.rank-row.me{background:var(--ball-soft);margin:0 -18px;padding-left:20px;padding-right:20px;border-bottom-color:transparent}
+.rank-row .sub{color:var(--muted)}
+.rank-n{font-family:var(--f-big);font-weight:700;width:32px;text-align:center;font-size:1.15rem;color:var(--muted)}
+.rank-row:nth-child(1) .rank-n{color:var(--ball)}
+.rank-r{font-family:var(--f-big);font-weight:700;font-size:1.25rem}
+
+/* match card */
+.match{background:linear-gradient(160deg,var(--navy),var(--navy-2));color:var(--on-table);border-radius:26px;padding:26px 24px 24px;display:flex;flex-direction:column;gap:20px;position:relative;overflow:hidden}
+.match>*{position:relative}
+.vs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;text-align:center;gap:12px}
+.vs .sc{font-family:var(--f-big);font-weight:800;font-size:clamp(2.2rem,9vw,3rem);background:var(--navy);padding:4px 14px;border-radius:14px;line-height:1.1}
+.match .note{text-align:center;font-weight:700;color:var(--on-table-2)}
+.match .pair{display:grid;grid-template-columns:1fr 1.6fr;gap:10px;position:relative;z-index:1}
+.vs .p{display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:800;min-width:0}
+.vs .p span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vs .av{width:64px;height:64px;font-size:1.3rem}
+.when{text-align:center;font-weight:700;font-size:1.05rem}
+.when small{display:block;color:var(--on-table-2);font-size:.95rem;font-weight:600}
+.match .btn.main{position:relative;z-index:1}
+
+/* profile */
+.prof{display:flex;align-items:center;gap:20px;min-width:0}
+.prof>div{min-width:0}
+.prof h1{overflow-wrap:anywhere;margin-bottom:6px}
+.prof .av{width:84px;height:84px;font-size:1.7rem}
+.prof h1{font-size:clamp(1.6rem,6vw,2.2rem)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.stat{background:var(--card);color:var(--ink);border-radius:20px;padding:18px 12px 16px;text-align:center}
+.stat b{margin-bottom:4px}
+.stat b{display:block;font-family:var(--f-big);font-size:clamp(1.6rem,7vw,2.2rem);font-weight:800}
+.stat span{color:var(--muted);font-weight:700;font-size:.9rem}
+.win{color:var(--win)} .loss{color:var(--loss)}
+.form-row{display:flex;gap:8px;justify-content:center}
+.form-row i{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-style:normal;font-weight:800;font-family:var(--f-big);font-size:.95rem}
+.form-row i.W{background:var(--win);color:#fff}
+.form-row i.L{background:var(--loss);color:#fff}
+
+/* avatar picker */
+.ava-prev{display:flex;justify-content:center}
+.ava-prev .av{width:120px;height:120px;box-shadow:0 10px 30px -12px rgba(0,0,0,.35)}
+.ava-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.ava-grid button{border:0;background:none;padding:3px;border-radius:50%;display:grid;place-items:center}
+.ava-grid button .av{width:100%;height:auto;aspect-ratio:1;max-width:100%}
+.ava-grid button[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ball)}
+.dots{display:flex;gap:8px;flex-wrap:wrap}
+.dots button{width:38px;height:38px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1.5px var(--line);position:relative}
+.dots button[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ball)}
+.prof .edit{position:relative;border:0;background:none;padding:0;border-radius:50%}
+.prof .edit{flex:none}
+.prof .edit::after{content:"✎";position:absolute;right:-4px;top:-4px;width:30px;height:30px;border-radius:50%;background:var(--ball);color:#fff;display:grid;place-items:center;font-size:.9rem;border:3px solid var(--bg)}
+
+/* contacts & recovery code */
+.fine{font-size:.85rem;font-weight:600;color:var(--muted);line-height:1.4}
+.fine.on-bg{color:var(--on-bg-2);margin-top:-4px}
+.auth-links{display:flex;flex-direction:column}
+.contact{display:grid;grid-template-columns:1fr 1.3fr;gap:10px;background:rgba(255,255,255,.08);border-radius:18px;padding:14px;position:relative;z-index:1}
+.contact .txt{grid-column:1/-1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.contact .btn.sm{width:100%;padding:0 10px}
+.contact .txt span{font-size:.78rem;font-weight:700;color:var(--on-table-2)}
+.contact .txt b{font-size:1.05rem;overflow-wrap:anywhere;user-select:all}
+.contact a.btn{text-decoration:none}
+.code{font-family:var(--f-big);font-size:clamp(1.3rem,6vw,1.8rem);font-weight:700;text-align:center;letter-spacing:.04em;background:var(--card);border:2px dashed var(--line);border-radius:18px;padding:18px 10px;user-select:all}
+
+/* ---------- sheet ---------- */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.sheet{width:100%;max-width:560px;background:var(--sheet);color:var(--ink);border-radius:30px 30px 0 0;padding:22px max(20px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px;max-height:100%;overflow:auto;animation:up .2s ease}
+.sheet-head{display:flex;justify-content:space-between;align-items:center}
+.sheet-head h2{font-size:1.5rem;font-weight:700}
+.x{width:44px;height:44px;border-radius:50%;border:0;background:var(--soft);display:grid;place-items:center}
+.x svg{width:20px;height:20px}
+.group{display:flex;flex-direction:column;gap:8px}
+.group>label{font-weight:800;color:var(--muted);font-size:.9rem}
+.seg{display:flex;gap:8px;flex-wrap:wrap}
+.seg button{flex:1;min-width:max-content;height:54px;border-radius:16px;border:2px solid var(--line);background:var(--card);font-weight:800;font-size:1rem;padding:0 14px}
+.seg button[aria-pressed="true"]{background:var(--ball);border-color:var(--ball);color:#FFFFFF}
+.picks{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.picks button{flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;width:80px;padding:8px 4px;border-radius:16px;border:2px solid transparent;background:none;font-weight:700;font-size:.85rem}
+.picks button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picks button[aria-pressed="true"]{border-color:var(--ball);background:var(--card)}
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;text-align:center}
+.score .p{display:flex;flex-direction:column;align-items:center;gap:10px;font-weight:800;min-width:0}
+.score .p span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px}
+.step b{font-family:var(--f-big);font-size:4rem;font-weight:800;line-height:1}
+.step button{width:64px;height:48px;border-radius:14px;border:0;background:var(--soft);font-size:1.6rem;font-weight:800}
+.colon{font-family:var(--f-big);font-size:2.5rem;color:var(--muted)}
+.hint{text-align:center;font-weight:700;color:var(--on-bg-2)}
+.sheet .hint{color:var(--muted)}
+.sheet .err{color:var(--loss)}
+.seg.light button{background:transparent;border-color:rgba(255,255,255,.35);color:var(--on-bg)}
+.seg.light button[aria-pressed="true"]{background:var(--ball);border-color:var(--ball);color:#FFFFFF}
+.hint.ok{color:var(--win)}
+
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--card);color:var(--ink);box-shadow:0 12px 30px -10px rgba(0,0,0,.45);padding:14px 20px;border-radius:16px;font-weight:800;z-index:60;animation:up .2s;max-width:calc(100vw - 32px);text-align:center}
+@keyframes fade{from{opacity:0}}
+@keyframes up{from{opacity:0;transform:translate(var(--tx,0),12px)}}
+.toast{--tx:-50%}
+@media (prefers-reduced-motion:reduce){.scrim,.sheet,.toast{animation:none}}
+
+/* short phones: tighten */
+@media (max-height:720px){
+  .view{gap:14px;padding-block:24px 18px}
+  .hero{padding:18px 22px}.hero .big{font-size:3.2rem}
+  .item{min-height:66px;padding:10px 12px}.av{width:44px;height:44px}
+  .btn{min-height:56px}
+  .list .item:nth-child(n+3){display:none}
+  .rank-row:nth-child(n+5):not(.me){display:none}
+}
+
+/* ---------- PC ---------- */
+@media (min-width:900px){
+  body{font-size:19px}
+  .tabs{display:none}
+  .rail{display:flex;flex-direction:column;gap:6px;width:240px;flex:none;background:var(--navy);padding:28px 16px}
+  .rail .logo{padding:0 12px 26px;color:var(--on-bg)}
+  .rail button.nav{display:flex;align-items:center;gap:14px;height:58px;padding:0 16px;border:0;border-radius:16px;background:none;font-weight:800;font-size:1.05rem;color:var(--on-bg-2);position:relative}
+  .rail button.nav svg{width:24px;height:24px}
+  .rail button.nav:hover{background:rgba(255,255,255,.08);color:var(--on-bg)}
+  .rail button.nav[aria-current]{background:rgba(255,255,255,.12);color:var(--on-bg)}
+  .rail button.nav[aria-current] svg{color:var(--ball)}
+  .rail .tag{position:static;margin-left:auto}
+  .rail .btn{margin-top:auto}
+  .view{padding:48px 64px;gap:26px}
+  body.in::after{left:252px}
+  .split{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  .split>div{display:flex;flex-direction:column;gap:18px;min-height:0}
+  .top .btn{display:none}
+  .auth{grid-template-rows:none;grid-template-columns:1.15fr 1fr}
+  .auth-top{padding:56px}
+  .auth-bottom{justify-content:center;padding:56px}
+  .scrim{align-items:center}
+  .sheet{border-radius:30px}
+}
+@media (max-width:899px){ .split{display:contents} .split>div{display:contents} }
+</style>
+
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const id = () => Math.random().toString(36).slice(2, 10);
+const need = bo => Math.floor(bo / 2) + 1;
+const okScore = (bo, a, b) => { const n = need(bo); return (a === n && b < n) || (b === n && a < n); };
+const elo = (w, l) => Math.max(1, Math.round(32 * (1 - 1 / (1 + Math.pow(10, (l - w) / 400)))));
+
+const I = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6"/><path d="m13.3 13.3 6.7 6.7"/></svg>',
+  match:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  rank:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-8h5v8M9.5 21V5h5v16M15 21v-5h5v5"/></svg>',
+  me:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12 20 4l-6 16-3-7z"/></svg>'
+};
+
+/* ---------- data comes from the server ---------- */
+const CITIES = ['Ташкент','Самарканд','Бухара','Андижан','Наманган','Фергана','Нукус','Карши','Коканд','Термез','Джизак','Ургенч','Навои','Гулистан'];
+let db = { me: null, players: [], matches: [] };
+
+const P = pid => db.players.find(p => p.id === pid) || { id: pid, name: 'Игрок', city: '', rating: 1000, w: 0, l: 0 };
+const me = () => P(db.me);
+const first = p => p.name;
+const short = p => p.name;
+const ranked = () => db.players.filter(p => p.w + p.l > 0).sort((a, b) => b.rating - a.rating);
+const rankOf = pid => { const i = ranked().findIndex(p => p.id === pid); return i < 0 ? null : i + 1; };
+const other = m => m.a === db.me ? m.b : m.a;
+const mine = m => m.a === db.me || m.b === db.me;
+const HUES = [210, 22, 150, 270, 340, 190, 40, 120];
+const hue = s => { let h = 0; for (const c of s) h = h * 31 + c.charCodeAt(0) >>> 0; return HUES[h % HUES.length]; };
+/* ---------- animal avatars (original flat art, each holding a paddle) ---------- */
+const DK = '#14110F';
+/* ---------- low-poly helpers: each shape is split into facets shaded by a top-left light ---------- */
+function hx(h){ h = h.replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function shade(h, t){ const c = hx(h).map(v => Math.round(t >= 0 ? v + (255 - v) * t : v * (1 + t))); return '#' + c.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join(''); }
+const LX = -0.55, LY = -0.83;
+function facets(pts, col, k = 0.16){
+  const n = pts.length; let cx = 0, cy = 0; pts.forEach(([x, y]) => { cx += x; cy += y; }); cx /= n; cy /= n;
+  let out = '';
+  for (let i = 0; i < n; i++){
+    const a = pts[i], b = pts[(i + 1) % n], mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy, len = Math.hypot(mx, my) || 1;
+    const t = (mx / len * LX + my / len * LY) * k + ((i * 7 + n) % 3 - 1) * 0.022;
+    const f = shade(col, t);
+    out += `<polygon points="${cx.toFixed(1)},${cy.toFixed(1)} ${a[0]},${a[1]} ${b[0]},${b[1]}" fill="${f}" stroke="${f}" stroke-width=".5" stroke-linejoin="round"/>`;
+  }
+  return out;
+}
+const mirror = pts => pts.map(([x, y]) => [100 - x, y]).reverse();
+/* 'F' = the animal's main colour (player can change it), 'F:-0.3' = darker/lighter version of it */
+const resolve = (c, fur) => c[0] !== 'F' ? c : shade(fur, c.length > 1 ? parseFloat(c.slice(2)) : 0);
+/* calm, level eyes: almond iris, round pupil, small highlight, soft lid */
+const eyes = (iris, y = 0) => [
+  ['F:-0.42', [[29, 44.8 + y], [37, 40.6 + y], [45, 44.8 + y], [37, 42.2 + y]]],
+  [iris, [[30, 45 + y], [37, 42 + y], [44, 45 + y], [37, 48.6 + y]]],
+  [DK, [[37, 42.8 + y], [39.6, 45.3 + y], [37, 47.8 + y], [34.4, 45.3 + y]]],
+  ['#FFFFFF', [[37.8, 43.4 + y], [39, 44.1 + y], [38, 44.8 + y]]]
+];
+const ANIMALS = {
+  wolf: { n: 'Волк', fur: '#7C8794', L: () => [
+    ['F', [[20, 8], [16, 36], [36, 26]]], ['F:-0.5', [[21, 16], [20, 32], [31, 27]]],
+    ['F:-0.15', [[24, 32], [12, 50], [20, 58], [26, 58], [20, 68], [34, 74], [40, 62], [34, 40]]],
+    ['F', [[50, 18], [36, 22], [24, 32], [34, 40], [50, 44]]],
+    ['#E3E7EB', [[34, 40], [40, 62], [34, 74], [44, 84], [50, 86], [50, 50]]],
+    ['F:0.2', [[50, 44], [44, 48], [42, 60], [50, 64]]],
+    ...eyes('#C9A23A'),
+    [DK, [[50, 60], [44, 60], [45, 65], [50, 68]]]] },
+  fox: { n: 'Лиса', fur: '#E06A26', L: () => [
+    ['F', [[18, 6], [16, 34], [38, 24]]], ['F:-0.6', [[20, 14], [20, 30], [31, 25]]],
+    ['F', [[22, 32], [8, 58], [30, 60], [36, 46]]],
+    ['F', [[50, 20], [38, 22], [22, 32], [36, 46], [50, 48]]],
+    ['#F4EEE6', [[10, 58], [30, 60], [42, 64], [50, 66], [50, 84], [36, 76]]],
+    ['F:0.18', [[50, 46], [42, 52], [44, 64], [50, 66]]],
+    ...eyes('#D9A43A'),
+    [DK, [[50, 76], [45, 75], [47, 80], [50, 82]]]] },
+  tiger: { n: 'Тигр', fur: '#E8832A', L: () => [
+    ['F', [[22, 12], [16, 34], [34, 24]]], ['#F6EEE2', [[23, 19], [21, 31], [30, 26]]],
+    ['F', [[50, 16], [36, 20], [22, 32], [16, 52], [30, 68], [50, 72]]],
+    ['#F6EEE2', [[22, 56], [30, 68], [42, 80], [50, 82], [50, 66], [40, 60]]],
+    ['#F6EEE2', [[50, 48], [42, 56], [44, 66], [50, 68]]],
+    ['#2A2420', [[50, 16], [46, 17], [48, 27], [50, 29]]], ['#2A2420', [[36, 20], [32, 23], [40, 29]]],
+    ['#2A2420', [[18, 41], [29, 44], [18, 46]]], ['#2A2420', [[16, 52], [27, 54], [18, 57]]],
+    ...eyes('#D9A43A'),
+    ['#C2566A', [[50, 58], [45, 57], [47, 62], [50, 64]]]] },
+  lion: { n: 'Лев', fur: '#E2A64A', L: () => [
+    ['F:-0.42', [[50, 3], [30, 7], [12, 20], [5, 44], [11, 66], [26, 83], [50, 93]]],
+    ['F:-0.25', [[50, 10], [32, 14], [18, 28], [14, 46], [20, 64], [32, 78], [50, 85]]],
+    ['F', [[26, 21], [23, 34], [35, 28]]],
+    ['F', [[50, 20], [36, 24], [26, 36], [24, 54], [34, 70], [50, 76]]],
+    ['F:0.45', [[50, 50], [40, 56], [40, 67], [50, 73]]],
+    ...eyes('#B98A2E'),
+    ['#3A2214', [[50, 54], [44, 54], [46, 60], [50, 62]]]] },
+  bear: { n: 'Медведь', fur: '#7A5538', L: () => [
+    ['F', [[22, 13], [13, 21], [15, 33], [28, 30], [31, 19]]], ['F:0.3', [[21, 18], [17, 24], [19, 29], [26, 27]]],
+    ['F', [[50, 16], [34, 18], [20, 30], [15, 50], [24, 68], [38, 78], [50, 80]]],
+    ['F:0.32', [[50, 48], [38, 52], [34, 64], [42, 74], [50, 76]]],
+    ...eyes('#A9773A', -2),
+    [DK, [[50, 51], [42, 52], [44, 58], [50, 60]]]] },
+  panda: { n: 'Панда', fur: '#24252A', L: () => [
+    ['F', [[18, 11], [11, 25], [21, 34], [32, 23]]],
+    ['#F1F0EA', [[50, 16], [34, 18], [20, 30], [15, 50], [24, 68], [38, 78], [50, 80]]],
+    ['F', [[27, 38], [23, 48], [28, 56], [38, 55], [43, 46], [38, 38]]],
+    ['#DCE2E6', [[30, 46], [35, 43.5], [40, 46], [35, 48.5]]], [DK, [[35, 44.3], [36.8, 46], [35, 47.7], [33.2, 46]]], ['#FFFFFF', [[35.6, 44.8], [36.4, 45.3], [35.7, 45.8]]],
+    ['#E0DFD8', [[50, 52], [40, 56], [38, 66], [46, 72], [50, 73]]],
+    ['F', [[50, 54], [43, 55], [45, 60], [50, 62]]]] },
+  eagle: { n: 'Орёл', fur: '#6A4528', L: () => [
+    ['F', [[50, 70], [34, 72], [22, 84], [50, 92]]],
+    ['#F2F0EA', [[50, 8], [34, 12], [18, 26], [9, 46], [16, 58], [26, 54], [21, 66], [34, 64], [40, 74], [50, 70]]],
+    ...eyes('#D9A43A', -2).map(([c, p]) => [c[0] === 'F' ? '#B9B2A6' : c, p]),
+    ['#EDB02E', [[50, 44], [42, 48], [40, 58], [44, 66], [50, 80]]],
+    ['#B87A10', [[44, 66], [50, 80], [50, 64]]]] },
+  panther: { n: 'Пантера', fur: '#33363E', L: () => [
+    ['F', [[20, 10], [16, 34], [36, 24]]], ['F:0.15', [[22, 17], [20, 30], [30, 25]]],
+    ['F', [[50, 18], [36, 20], [22, 32], [18, 50], [28, 66], [42, 76], [50, 78]]],
+    ['F:0.12', [[50, 50], [40, 56], [42, 68], [50, 72]]],
+    ...eyes('#9BC94F').map(([c, p]) => [c === 'F:-0.42' ? 'F:0.25' : c, p]),
+    [DK, [[50, 58], [44, 57], [46, 62], [50, 64]]]] },
+  bull: { n: 'Бык', fur: '#6A4230', L: () => [
+    ['#EDE3CC', [[24, 30], [10, 26], [6, 12], [14, 21], [27, 23]]],
+    ['F', [[23, 34], [8, 38], [21, 43]]],
+    ['F', [[50, 17], [34, 20], [24, 30], [22, 50], [30, 66], [50, 70]]],
+    ['F:-0.3', [[50, 17], [41, 19], [44, 28], [50, 26]]],
+    ['#C9A28A', [[50, 58], [34, 60], [32, 72], [40, 82], [50, 84]]],
+    ['#5A2E1E', [[39, 67], [44, 65], [44, 72]]],
+    ...eyes('#8A5A30')] },
+  raccoon: { n: 'Енот', fur: '#8E949D', L: () => [
+    ['F', [[22, 12], [16, 32], [34, 24]]], ['F:-0.6', [[23, 18], [21, 29], [30, 25]]],
+    ['F', [[50, 18], [36, 20], [22, 32], [13, 52], [30, 64], [50, 70]]],
+    ['#E3E6EA', [[13, 52], [24, 50], [34, 58], [50, 60], [50, 76], [34, 72]]],
+    ['F:-0.6', [[20, 40], [22, 51], [36, 53], [50, 49], [50, 44], [40, 40]]],
+    ['F:-0.6', [[50, 22], [47, 24], [48.5, 42], [50, 44]]],
+    ['#C9A23A', [[30, 46], [35, 43.6], [40, 46], [35, 48.4]]], [DK, [[35, 44.4], [36.7, 46], [35, 47.6], [33.3, 46]]], ['#FFFFFF', [[35.6, 44.9], [36.4, 45.4], [35.7, 45.9]]],
+    [DK, [[50, 62], [45, 62], [47, 66], [50, 67]]]] },
+  owl: { n: 'Сова', fur: '#7A5C3E', L: () => [
+    ['F', [[24, 8], [18, 30], [36, 24]]],
+    ['F', [[50, 16], [34, 18], [18, 30], [12, 52], [22, 72], [38, 82], [50, 84]]],
+    ['#EADBC0', [[50, 30], [34, 26], [20, 38], [20, 55], [32, 64], [50, 60]]],
+    ['#E3A33A', [[26, 47], [34, 41.5], [42, 47], [34, 53]]],
+    [DK, [[34, 44], [37, 47], [34, 50], [31, 47]]], ['#FFFFFF', [[34.8, 44.8], [36, 45.6], [35, 46.4]]],
+    ['#3A3A3A', [[50, 50], [46, 52], [50, 62]]]] },
+  boar: { n: 'Кабан', fur: '#6A5747', L: () => [
+    ['F', [[22, 12], [12, 30], [32, 26]]],
+    ['F:-0.3', [[50, 6], [44, 9], [46, 20], [40, 11], [38, 22], [50, 24]]],
+    ['F', [[50, 18], [34, 22], [22, 34], [18, 54], [28, 70], [50, 74]]],
+    ['#C9998A', [[50, 54], [38, 58], [38, 72], [50, 74]]],
+    ['#6A3A2E', [[42, 62], [46, 62], [45, 67], [42, 67]]],
+    ['#F1EADA', [[38, 70], [33, 67], [32, 61], [35, 65], [40, 67]]],
+    ...eyes('#A9773A')] },
+};
+const FURS = [null, '#E0742E', '#D8A63C', '#B84A3E', '#C76A9A', '#7A5CC9', '#3D78C9', '#2E9C8E', '#5C9E48', '#3A3D46'];
+const LEGACY = { cat: 'panther', dog: 'wolf', rabbit: 'fox', frog: 'boar', penguin: 'eagle', koala: 'bear', monkey: 'boar' };
+const KINDS = Object.keys(ANIMALS);
+function avatarSVG(a){
+  const A = ANIMALS[a.k] || ANIMALS[LEGACY[a.k]] || ANIMALS.wolf;
+  const fur = a.fur || A.fur;
+  const layers = A.L().map(([c, p]) => [resolve(c, fur), p]);
+  let x0 = 99, x1 = 1, y0 = 99, y1 = 1;
+  layers.forEach(([, p]) => p.forEach(([x, y]) => { x0 = Math.min(x0, x, 100 - x); x1 = Math.max(x1, x, 100 - x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }));
+  const s = 74 / Math.max(x1 - x0, y1 - y0), tx = 50 - (x0 + x1) / 2 * s, ty = 51 - (y0 + y1) / 2 * s;
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(${tx.toFixed(2)} ${ty.toFixed(2)}) scale(${s.toFixed(3)})">${layers.map(([c, p]) => facets(p, c) + facets(mirror(p), c)).join('')}</g></svg>`;
+}
+const randAva = () => ({ k: KINDS[Math.floor(Math.random() * KINDS.length)], fur: null });
+const av = p => p.ava ? `<span class="av">${avatarSVG(p.ava)}</span>` : `<span class="av" style="--h:${hue(p.id)}">${esc(p.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase())}</span>`;
+function when(t){
+  const d = new Date(t), a = new Date(d).setHours(0,0,0,0), b = new Date().setHours(0,0,0,0), dd = Math.round((a - b) / 864e5);
+  const tm = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  if (dd === 0) return 'Сегодня, ' + tm;
+  if (dd === 1) return 'Завтра, ' + tm;
+  return d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + tm;
+}
+const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return n + ' ' + (m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c); };
+
+/* ---------- contacts: shared only between the two opponents, deleted when the match ends ---------- */
+function normContact(type, v){
+  v = (v || '').trim();
+  if (type === 'tg'){ v = v.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, ''); return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(v) ? '@' + v : null; }
+  let d = v.replace(/\D/g, ''); if (d.length === 9) d = '998' + d;
+  return d.length >= 11 && d.length <= 15 ? '+' + d : null;
+}
+const isTg = c => c && c[0] === '@';
+const fmtPhone = c => c.startsWith('+998') && c.length === 13 ? `+998 ${c.slice(4, 6)} ${c.slice(6, 9)}-${c.slice(9, 11)}-${c.slice(11)}` : c;
+const fmtContact = c => isTg(c) ? c : fmtPhone(c);
+const CKEY = () => 'rally.contact.' + db.me;
+function savedContact(){ try { return JSON.parse(localStorage.getItem(CKEY())) || { type: 'tg', val: '' }; } catch(e){ return { type: 'tg', val: '' }; } }
+function rememberContact(type, val){ try { localStorage.setItem(CKEY(), JSON.stringify({ type, val })); } catch(e){} }
+const contactOf = (m, pid) => pid === m.a ? m.ca : m.cb;
+const hasContactInText = t => /(https?:|www\.|t\.me|@[A-Za-z0-9_]{3,}|\d[\d\s\-()]{5,}\d)/i.test(t);
+function contactBlock(ct){
+  return `<div class="group"><label>Как с вами связаться</label>
+    <div class="seg"><button data-a="ct:tg" aria-pressed="${ct.type === 'tg'}">Telegram</button><button data-a="ct:ph" aria-pressed="${ct.type === 'ph'}">Телефон</button></div>
+    <input class="input" id="c-val" value="${esc(ct.val)}" placeholder="${ct.type === 'tg' ? '@username' : '+998 90 123 45 67'}" ${ct.type === 'ph' ? 'inputmode="tel"' : 'autocapitalize="off"'} autocomplete="off" aria-label="Контакт">
+    <p class="fine">Увидит только соперник, когда вызов будет принят. После матча контакт удаляется.</p></div>`;
+}
+const NICK_RE = /^[A-Za-zА-Яа-яЁё0-9_]{3,16}$/;
+const RESERVED = ['admin', 'administrator', 'rally', 'podacha', 'podachafit', 'support', 'moderator', 'админ', 'модератор', 'поддержка'];
+
+/* ---------- server API ---------- */
+async function api(path, body){
+  let r;
+  try { r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' }); }
+  catch(e){ throw new Error('Нет связи с сервером. Проверьте интернет'); }
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && path === '/api/state'){ db.me = null; render(); }
+  if (!r.ok) throw new Error(data.error || 'Что-то пошло не так');
+  return data;
+}
+async function load(){
+  const st = await api('/api/state');
+  db.me = st.me.id; db.players = st.players; db.matches = st.matches;
+  if (!db.players.some(p => p.id === db.me)) db.players.push(st.me);
+  render();
+}
+/* run a server action, then refresh everything */
+async function act(path, body, okMsg, after){
+  try { const r = await api(path, body); await load(); if (okMsg) toast(typeof okMsg === 'function' ? okMsg(r) : okMsg); if (after) after(r); return r; }
+  catch(e){ toast(e.message); throw e; }
+}
+
+const S = { view: 'home', auth: 'start', rankAll: false };
+
+/* ---------- auth ---------- */
+function renderAuth(){
+  const mode = S.auth;
+  const form = {
+    reg: `<p class="form-title">Новый игрок</p>
+        <input class="input" id="a-nick" placeholder="Никнейм" autocomplete="username" autocapitalize="off" maxlength="16" aria-label="Никнейм">
+        <p class="fine on-bg">3–16 символов: буквы, цифры, _. Не указывайте настоящее имя и личные данные.</p>
+        <select class="input" id="a-city" required aria-label="Город"><option value="" disabled selected>Ваш город</option>${CITIES.map(c => `<option>${c}</option>`).join('')}</select>
+        <input class="input" id="a-pass" type="password" placeholder="Пароль" autocomplete="new-password" aria-label="Пароль">`,
+    login: `<p class="form-title">С возвращением</p>
+        <input class="input" id="a-nick" placeholder="Никнейм" autocomplete="username" autocapitalize="off" aria-label="Никнейм">
+        <input class="input" id="a-pass" type="password" placeholder="Пароль" autocomplete="current-password" aria-label="Пароль">`,
+    reset: `<p class="form-title">Новый пароль</p>
+        <input class="input" id="a-nick" placeholder="Никнейм" autocapitalize="off" aria-label="Никнейм">
+        <input class="input" id="a-code" placeholder="Код восстановления: PDCH-XXXX-XXXX" autocapitalize="characters" autocomplete="off" aria-label="Код восстановления">
+        <input class="input" id="a-pass" type="password" placeholder="Новый пароль" autocomplete="new-password" aria-label="Новый пароль">`
+  }[mode];
+  $('#app').innerHTML = `
+  <div class="auth">
+    <div class="auth-top">
+      <span class="ball" aria-hidden="true"></span>
+      <div class="logo"><svg class="brand" viewBox="120 58 960 290" role="img" aria-label="Подача FIT"><defs><linearGradient id="pd-lime" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#EE5A12"/></linearGradient></defs><text x="600" y="204" text-anchor="middle" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="900" font-style="italic" letter-spacing="-8" textLength="940" lengthAdjust="spacingAndGlyphs">Подача</text><g fill="url(#pd-lime)"><path d="M190 269 L525 239 L545 239 L522 251 L190 278 Q177 278 190 269Z"/><path d="M260 291 L518 270 L532 270 L515 280 L260 298 Q248 298 260 291Z"/><path d="M350 310 L520 299 L533 299 L517 307 L350 316 Q340 316 350 310Z"/></g><circle cx="574" cy="278" r="43" fill="url(#pd-lime)"/><path d="M574 236 C592 249 599 266 592 282 C586 296 577 309 574 320" fill="none" stroke="#5A2205" stroke-width="4" stroke-linecap="round" opacity=".85"/><text x="635" y="335" fill="url(#pd-lime)" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4">FIT</text></svg></div>
+      <h1>Найди соперника по&nbsp;пинг-понгу</h1>
+      <p>Вызывай. Играй. Поднимайся в рейтинге.</p>
+    </div>
+    <div class="auth-bottom">
+      ${mode === 'start' ? `
+        <button class="btn main" data-a="auth:reg">Создать аккаунт</button>
+        <button class="btn ghost" data-a="auth:login">Войти</button>
+      ` : `
+      <form id="af" class="field" style="gap:12px" novalidate>
+        ${form}
+        <p class="err" id="a-err"></p>
+        <button class="btn main" type="submit">${mode === 'reg' ? 'Начать играть' : mode === 'login' ? 'Войти' : 'Сохранить пароль'}</button>
+        <div class="auth-links">
+          ${mode === 'login' ? `<button class="btn link" type="button" data-a="auth:reset">Забыли пароль?</button>` : ''}
+          <button class="btn link" type="button" data-a="auth:${mode === 'reg' ? 'login' : mode === 'login' ? 'reg' : 'login'}">${mode === 'reg' ? 'Уже есть аккаунт? Войти' : mode === 'login' ? 'Нет аккаунта? Создать' : 'Вернуться ко входу'}</button>
+        </div>
+      </form>`}
+    </div>
+  </div>`;
+  const f = $('#af'); if (!f) return;
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    const nick = $('#a-nick').value.trim().replace(/^@/, ''), pass = $('#a-pass').value, err = m => $('#a-err').textContent = m;
+    const btn = f.querySelector('[type=submit]');
+    try {
+      if (mode === 'reg'){
+        if (!NICK_RE.test(nick)) return err('Никнейм: 3–16 символов, буквы, цифры или _');
+        if (RESERVED.includes(nick.toLowerCase())) return err('Этот никнейм занят');
+        const city = $('#a-city').value;
+        if (!city) return err('Выберите город');
+        if (pass.length < 6) return err('Пароль — минимум 6 символов');
+        btn.disabled = true;
+        const r = await api('/api/register', { nick, city, pass, ava: randAva() });
+        S.view = 'home'; await load(); openCode(r.code); return;
+      }
+      if (mode === 'login'){
+        btn.disabled = true;
+        await api('/api/login', { nick, pass });
+        S.view = 'home'; await load(); return;
+      }
+      const code = $('#a-code').value.trim().toUpperCase();
+      if (pass.length < 6) return err('Пароль — минимум 6 символов');
+      btn.disabled = true;
+      const r = await api('/api/reset', { nick, code, pass });
+      S.view = 'home'; await load(); openCode(r.code, true);
+    } catch(ex){ err(ex.message); btn.disabled = false; }
+  });
+}
+function openCode(code, again){
+  close();
+  sheet(`<div class="sheet-head"><h2>Код восстановления</h2></div>
+    <p class="hint" style="text-align:left;font-weight:600">${again ? 'Пароль изменён. Старый код больше не действует — сохраните новый.' : 'Мы не храним email или телефон. Если забудете пароль, войти можно будет только с этим кодом.'} Мы показываем его один раз.</p>
+    <p class="code" id="rc">${code}</p>
+    <button class="btn alt" data-a="copy-code">Скопировать код</button>
+    <button class="btn main" data-a="code-ok:${again ? 1 : 0}">Я сохранил код</button>`);
+}
+
+/* ---------- views ---------- */
+function todo(){ return db.matches.filter(m => mine(m) && ((m.status === 'invite' && m.b === db.me) || (m.status === 'check' && m.by !== db.me))); }
+const prio = m => m.status === 'check' && m.by !== db.me ? 0 : m.status === 'booked' ? 1 : 2;
+function nextMatch(){ return db.matches.filter(m => mine(m) && ['booked','check'].includes(m.status)).sort((a, b) => prio(a) - prio(b) || a.when - b.when)[0]; }
+
+function vHome(){
+  const p = me(), rk = rankOf(p.id), t = todo();
+  const same = m => P(m.a).city === p.city ? 0 : 1;
+  const open = db.matches.filter(m => m.status === 'open' && m.a !== db.me && m.when > Date.now() - 3 * 3600e3).sort((a, b) => same(a) - same(b) || a.when - b.when);
+  const rows = [...t.map(m => ({ m, hot: true })), ...open.map(m => ({ m }))].slice(0, 4);
+  return `
+  <div class="top"><div><p class="hello">Привет, ${esc(first(p))}</p><h1>Сыграем?</h1></div></div>
+  <div class="split">
+    <div>
+      <div class="hero">
+        <div><p class="lbl">Рейтинг</p><p class="big num">${p.rating}</p></div>
+        <div class="side"><b>${rk ? '#' + rk : 'Новичок'}</b><span>${p.w}&nbsp;побед · ${p.l}&nbsp;пораж.</span></div>
+      </div>
+      <button class="btn main" data-a="new">${I.plus}Бросить вызов</button>
+    </div>
+    <div>
+      <div class="sec-title"><h2>Вызовы</h2></div>
+      ${rows.length ? `<div class="list">${rows.map(({ m, hot }) => {
+        const opp = P(m.by && m.status === 'check' ? m.by : m.a);
+        const sub = m.status === 'check' ? `Внёс счёт ${scoreFor(m)}` : (hot ? 'Вам · ' : '') + when(m.when) + (opp.city && opp.city !== p.city ? ' · ' + opp.city : '');
+        return `<div class="item${hot ? ' hot' : ''}">${av(opp)}<div class="txt"><p class="nm">${esc(short(opp))}</p><p class="sub">${esc(sub)}</p></div>
+          ${hot ? (m.status === 'check' ? `<button class="btn main sm" data-a="go:matches">Проверить</button>` : `<button class="btn main sm" data-a="yes:${m.id}">Принять</button>`) : `<button class="btn alt sm" data-a="join:${m.id}">Играть</button>`}</div>`;
+      }).join('')}</div>` : `<div class="empty"><b>Пока нет вызовов</b>Бросьте первый — кто-нибудь примет</div>`}
+    </div>
+  </div>`;
+}
+function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]; return `${x}:${y}`; }
+
+function vMatches(){
+  const n = nextMatch();
+  const waiting = db.matches.filter(m => m !== n && mine(m) && ((m.status === 'open' && m.a === db.me) || (m.status === 'invite' && m.a === db.me) || (m.status === 'check' && m.by === db.me)));
+  const last = db.matches.filter(m => mine(m) && m.status === 'done').sort((a, b) => b.when - a.when).slice(0, 3);
+  return `
+  <div class="top"><h1>Матчи</h1></div>
+  <div class="split">
+    <div>
+    ${n ? `
+      <div class="match">
+        <div class="vs"><div class="p">${av(me())}<span>Вы</span></div>${n.status === 'check' ? `<span class="sc num">${scoreFor(n)}</span>` : '<span></span>'}<div class="p">${av(P(other(n)))}<span>${esc(first(P(other(n))))}</span></div></div>
+        ${n.status === 'booked' ? `
+          <p class="when">${esc(when(n.when))}<small>${esc(n.place)} · до ${need(n.bo)} побед</small></p>
+          <button class="btn main" data-a="score:${n.id}">Внести счёт</button>`
+        : n.by === db.me ? `
+          <p class="note">Ждём, когда ${esc(first(P(other(n))))} подтвердит. До этого рейтинг не меняется.</p>
+          <button class="btn ghost" data-a="score:${n.id}">Изменить счёт</button>`
+        : `
+          <p class="note">${esc(first(P(n.by)))} внёс счёт. Он засчитается, только если вы подтвердите.</p>
+          <div class="pair"><button class="btn ghost" data-a="no:${n.id}">Нет</button><button class="btn main" data-a="ok:${n.id}">Да, верно</button></div>`}
+        ${contactRow(n)}
+      </div>` : `<div class="empty"><b>Нет запланированных матчей</b>Примите вызов на главной</div>`}
+    </div>
+    <div>
+      ${waiting.length ? `<div class="sec-title"><h2>Ждут ответа</h2></div><div class="list">${waiting.slice(0, 2).map(m => {
+        const o = m.b ? P(other(m)) : null;
+        return `<div class="item">${o ? av(o) : '<span class="av" style="--h:22">?</span>'}<div class="txt"><p class="nm">${o ? esc(o.name) : 'Любой игрок'}</p><p class="sub">${m.status === 'check' ? 'Ждём подтверждения счёта' : esc(when(m.when))}</p></div>${m.status !== 'check' ? `<button class="btn alt sm" data-a="cancel:${m.id}">Отменить</button>` : ''}</div>`;
+      }).join('')}</div>` : ''}
+      ${last.length ? `<div class="sec-title"><h2>Последние</h2></div><div class="list">${last.map(m => {
+        const o = P(other(m)), won = m.winner === db.me;
+        return `<div class="item">${av(o)}<div class="txt"><p class="nm">${esc(o.name)}</p><p class="sub">${scoreFor(m)}</p></div><b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' : '−'}${m.d}</b></div>`;
+      }).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function vRank(){
+  const city = me().city;
+  const r = ranked().filter(p => S.rankAll || p.city === city), myR = (() => { const i = r.findIndex(p => p.id === db.me); return i < 0 ? null : i + 1; })(), top = r.slice(0, 6);
+  const row = (p, i) => `<div class="rank-row${p.id === db.me ? ' me' : ''}"><span class="rank-n">${i + 1}</span>${av(p)}<div class="txt" style="flex:1;min-width:0"><p class="nm" style="font-weight:800;line-height:1.2;overflow-wrap:anywhere">${p.id === db.me ? 'Вы' : esc(p.name)}</p><p class="sub" style="font-weight:600;font-size:.9rem">${p.w}–${p.l}${S.rankAll && p.city ? ' · ' + esc(p.city) : ''}</p></div><span class="rank-r num">${p.rating}</span></div>`;
+  return `
+  <div class="top"><h1>Рейтинг</h1></div>
+  <div class="seg light"><button data-a="rk:city" aria-pressed="${!S.rankAll}">${esc(city || 'Мой город')}</button><button data-a="rk:all" aria-pressed="${S.rankAll}">Все города</button></div>
+  ${!r.length ? `<div class="empty"><b>Здесь пока пусто</b>В вашем городе ещё никто не сыграл</div>` : ''}
+  ${r.length ? `<div class="board">
+    ${top.map(row).join('')}
+    ${myR && myR > 6 ? row(me(), myR - 1) : ''}
+  </div>` : ''}
+  ${!myR ? `<p class="hint">Сыграйте первый матч, чтобы попасть в рейтинг</p>` : ''}`;
+}
+
+function vMe(){
+  const p = me(), games = db.matches.filter(m => mine(m) && m.status === 'done').sort((a, b) => b.when - a.when);
+  const form = games.slice(0, 5).map(m => m.winner === db.me ? 'W' : 'L');
+  const pct = p.w + p.l ? Math.round(p.w / (p.w + p.l) * 100) : 0;
+  return `
+  <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p></div></div>
+  <div class="stats">
+    <div class="stat"><b class="num">${p.rating}</b><span>рейтинг</span></div>
+    <div class="stat"><b class="win num">${p.w}</b><span>победы</span></div>
+    <div class="stat"><b class="loss num">${p.l}</b><span>поражения</span></div>
+  </div>
+  <div class="stat" style="display:flex;flex-direction:column;gap:12px">
+    <span>Последние матчи · ${pct}% побед</span>
+    ${form.length ? `<div class="form-row">${form.map(f => `<i class="${f}">${f === 'W' ? 'В' : 'П'}</i>`).join('')}</div>` : '<span style="color:var(--ink)">Пока нет сыгранных матчей</span>'}
+  </div>
+  <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px">
+    <button class="btn ghost" data-a="logout">Выйти</button>
+  </div>`;
+}
+
+/* ---------- shell ---------- */
+function render(){
+  document.body.classList.toggle('in', !!db.me);
+  if (!db.me){ renderAuth(); return; }
+  const n = todo().length;
+  const badge = v => v === 'home' && n ? `<span class="tag">${n}</span>` : '';
+  const tab = (v, icon, label) => `<button class="nav" data-a="go:${v}" ${S.view === v ? 'aria-current="page"' : ''}>${icon}${label}${badge(v)}</button>`;
+  const tabs = tab('home', I.home, 'Главная') + tab('matches', I.match, 'Матчи') + tab('rank', I.rank, 'Рейтинг') + tab('me', I.me, 'Профиль');
+  const view = { home: vHome, matches: vMatches, rank: vRank, me: vMe }[S.view]();
+  $('#app').innerHTML = `
+    <nav class="rail"><div class="logo"><svg class="brand" viewBox="120 58 960 290" role="img" aria-label="Подача FIT"><defs><linearGradient id="pd-lime2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#EE5A12"/></linearGradient></defs><text x="600" y="204" text-anchor="middle" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="900" font-style="italic" letter-spacing="-8" textLength="940" lengthAdjust="spacingAndGlyphs">Подача</text><g fill="url(#pd-lime2)"><path d="M190 269 L525 239 L545 239 L522 251 L190 278 Q177 278 190 269Z"/><path d="M260 291 L518 270 L532 270 L515 280 L260 298 Q248 298 260 291Z"/><path d="M350 310 L520 299 L533 299 L517 307 L350 316 Q340 316 350 310Z"/></g><circle cx="574" cy="278" r="43" fill="url(#pd-lime2)"/><path d="M574 236 C592 249 599 266 592 282 C586 296 577 309 574 320" fill="none" stroke="#5A2205" stroke-width="4" stroke-linecap="round" opacity=".85"/><text x="635" y="335" fill="url(#pd-lime2)" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4">FIT</text></svg></div>${tabs}<button class="btn main" data-a="new">${I.plus}Вызов</button></nav>
+    <div class="screen"><main class="view">${view}</main><nav class="tabs">${tabs}</nav></div>`;
+}
+
+/* ---------- sheets ---------- */
+let C;
+function sheet(html){ const open = document.querySelector('.scrim .sheet'); if (open){ const st = open.scrollTop; open.innerHTML = html; open.scrollTop = st; return; } document.body.insertAdjacentHTML('beforeend', `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`); }
+const close = () => document.querySelector('.scrim')?.remove();
+const head = t => `<div class="sheet-head"><h2>${t}</h2><button class="x" data-a="close" aria-label="Закрыть">${I.x}</button></div>`;
+
+function openNew(){
+  close();
+  C = { who: null, day: 1, hour: 18, bo: 5, ct: savedContact() };
+  drawNew();
+}
+function drawNew(){
+  const opps = db.players.filter(p => p.id !== db.me).sort((a, b) => Math.abs(a.rating - me().rating) - Math.abs(b.rating - me().rating));
+  const days = [[0, 'Сегодня'], [1, 'Завтра'], [2, 'Послезавтра']];
+  sheet(`${head('Новый вызов')}
+    <div class="group"><label>Кому</label><div class="picks">
+      <button data-a="who:" aria-pressed="${C.who === null}"><span class="av" style="--h:22">Все</span><span>Любому</span></button>
+      ${opps.map(p => `<button data-a="who:${p.id}" aria-pressed="${C.who === p.id}">${av(p)}<span>${esc(first(p))}</span></button>`).join('')}
+    </div></div>
+    <div class="group"><label>Когда</label><div class="seg">${days.map(([d, t]) => `<button data-a="day:${d}" aria-pressed="${C.day === d}">${t}</button>`).join('')}</div>
+      <div class="seg">${[10, 14, 18, 20].map(h => `<button data-a="hour:${h}" aria-pressed="${C.hour === h}">${h}:00</button>`).join('')}</div></div>
+    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Спортзал, стол 3" value="${esc(C.place || '')}"></div>
+    <div class="group"><label>Игра</label><div class="seg">${[3, 5].map(b => `<button data-a="bo:${b}" aria-pressed="${C.bo === b}">До ${need(b)} побед</button>`).join('')}</div></div>
+    ${contactBlock(C.ct)}
+    <p class="err" id="n-err"></p>
+    <button class="btn main" data-a="send">${C.who ? 'Вызвать ' + esc(first(P(C.who))) : 'Опубликовать вызов'}</button>`);
+}
+let A;
+function openAva(first){
+  close();
+  const cur = me().ava || randAva();
+  A = { k: ANIMALS[cur.k] ? cur.k : (LEGACY[cur.k] || 'wolf'), fur: cur.fur || null, first: !!first };
+  drawAva();
+}
+function drawAva(){
+  sheet(`${head(A.first ? 'Выберите аватар' : 'Ваш аватар')}
+    <div class="ava-prev"><span class="av">${avatarSVG(A)}</span></div>
+    <div class="ava-grid">${KINDS.map(k => `<button data-a="ak:${k}" aria-pressed="${A.k === k}" aria-label="${ANIMALS[k].n}"><span class="av">${avatarSVG({ k, fur: null })}</span></button>`).join('')}</div>
+    <div class="group"><label>Цвет · ${ANIMALS[A.k].n}</label><div class="dots">${FURS.map((c, i) => `<button data-a="afur:${i}" aria-pressed="${A.fur === c}" style="background:${c || ANIMALS[A.k].fur}" aria-label="${c ? 'Цвет ' + i : 'Натуральный'}" title="${c ? '' : 'Натуральный'}"></button>`).join('')}</div></div>
+    <button class="btn main" data-a="ava-save">Сохранить</button>`);
+}
+function keepNew(){ C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; }
+function openScore(mid, title = 'Какой счёт?'){
+  const m = db.matches.find(x => x.id === mid);
+  C = { mid, bo: m.bo, x: 0, y: 0 };
+  sheet(`${head(title)}
+    <div class="score">
+      <div class="p">${av(me())}<span>Вы</span><div class="step"><button data-a="sc:x:1" aria-label="Плюс">+</button><b id="sx">0</b><button data-a="sc:x:-1" aria-label="Минус">−</button></div></div>
+      <span class="colon">:</span>
+      <div class="p">${av(P(other(m)))}<span>${esc(first(P(other(m))))}</span><div class="step"><button data-a="sc:y:1" aria-label="Плюс">+</button><b id="sy">0</b><button data-a="sc:y:-1" aria-label="Минус">−</button></div></div>
+    </div>
+    <p class="hint" id="s-hint"></p>
+    <p class="hint" style="font-size:.9rem;font-weight:600">${esc(first(P(other(m))))} должен подтвердить счёт. Только после этого он засчитается.</p>
+    <button class="btn main" data-a="save-score" id="s-btn">Отправить на подтверждение</button>`);
+  drawScore();
+}
+function drawScore(){
+  const ok = okScore(C.bo, C.x, C.y);
+  $('#sx').textContent = C.x; $('#sy').textContent = C.y;
+  const h = $('#s-hint'); h.className = 'hint' + (ok ? ' ok' : '');
+  h.textContent = ok ? (C.x > C.y ? 'Победа!' : 'Поражение') : `Победитель набирает ${need(C.bo)}`;
+  $('#s-btn').disabled = !ok;
+}
+/* opponent's contact on the match card */
+function contactRow(m){
+  const c = contactOf(m, other(m));
+  if (!c) return `<p class="note" style="font-size:.9rem">Контакт соперника появится здесь.</p>`;
+  const link = isTg(c) ? `https://t.me/${c.slice(1)}` : `tel:${c}`;
+  return `<div class="contact"><div class="txt"><span>${isTg(c) ? 'Telegram соперника' : 'Телефон соперника'}</span><b id="oc">${esc(fmtContact(c))}</b></div>
+    <button class="btn ghost sm" data-a="copy-oc" aria-label="Скопировать контакт">Копировать</button>
+    <a class="btn main sm" href="${esc(link)}" target="_blank" rel="noopener">${isTg(c) ? 'Написать' : 'Позвонить'}</a></div>`;
+}
+
+/* accepting a challenge = sharing your contact with that opponent */
+let AC;
+function openAccept(mid){
+  const same = AC && AC.mid === mid && $('#ac-err');
+  if (!same) close();
+  const m = db.matches.find(x => x.id === mid), o = P(m.a);
+  AC = { mid, ct: same ? AC.ct : savedContact() };
+  sheet(`${head('Принять вызов')}
+    <div class="item" style="border:1.5px solid var(--line)">${av(o)}<div class="txt"><p class="nm">${esc(o.name)} · ${o.rating}</p><p class="sub">${esc(when(m.when))} · ${esc(m.place)}</p></div></div>
+    ${contactBlock(AC.ct)}
+    <p class="err" id="ac-err"></p>
+    <button class="btn main" data-a="accept-go">Принять и обменяться контактами</button>`);
+}
+
+function toast(t){ document.querySelector('.toast')?.remove(); const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 2600); }
+
+/* ---------- actions ---------- */
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('scrim')) { close(); return; }
+  const el = e.target.closest('[data-a]'); if (!el) return;
+  const [a, b, c] = el.dataset.a.split(':');
+  const m = b ? db.matches.find(x => x.id === b) : null;
+  switch (a){
+    case 'auth': S.auth = b; renderAuth(); break;
+    case 'go': S.view = b; render(); break;
+    case 'close': close(); break;
+    case 'new': openNew(); break;
+    case 'who': keepNew(); C.who = b || null; drawNew(); break;
+    case 'day': keepNew(); C.day = +b; drawNew(); break;
+    case 'hour': keepNew(); C.hour = +b; drawNew(); break;
+    case 'bo': keepNew(); C.bo = +b; drawNew(); break;
+    case 'send': {
+      const place = $('#n-place').value.trim(), nerr = t => $('#n-err').textContent = t;
+      if (!place) { nerr('Укажите, где играем'); return; }
+      if (hasContactInText(place)) { nerr('В поле «Где» нельзя писать контакты — для них есть отдельное поле'); return; }
+      const cv = normContact(C.ct.type, $('#c-val').value);
+      if (!cv) { nerr(C.ct.type === 'tg' ? 'Проверьте Telegram: @username, от 5 символов' : 'Проверьте номер телефона'); return; }
+      rememberContact(C.ct.type, $('#c-val').value.trim());
+      const d = new Date(Date.now() + C.day * 864e5); d.setHours(C.hour, 0, 0, 0);
+      if (+d < Date.now()) { $('#n-err').textContent = 'Это время уже прошло'; return; }
+      el.disabled = true;
+      api('/api/challenges', { who: C.who, when: d.toISOString(), place, bo: C.bo, contact: { type: C.ct.type, val: $('#c-val').value } })
+        .then(async () => { close(); S.view = 'matches'; await load(); toast(C.who ? 'Вызов отправлен' : 'Вызов опубликован'); })
+        .catch(ex => { nerr(ex.message); el.disabled = false; });
+      break;
+    }
+    case 'join': case 'yes': openAccept(b); break;
+    case 'ct': { const box = AC && $('#ac-err') ? AC : C; if ($('#c-val')) box.ct.val = $('#c-val').value; box.ct.type = b; if (box === AC) openAccept(AC.mid); else { keepNew(); drawNew(); } break; }
+    case 'accept-go': {
+      const cv = normContact(AC.ct.type, $('#c-val').value);
+      if (!cv) { $('#ac-err').textContent = AC.ct.type === 'tg' ? 'Проверьте Telegram: @username, от 5 символов' : 'Проверьте номер телефона'; return; }
+      rememberContact(AC.ct.type, $('#c-val').value.trim());
+      el.disabled = true;
+      api(`/api/challenges/${AC.mid}/accept`, { contact: { type: AC.ct.type, val: $('#c-val').value } })
+        .then(async () => { close(); S.view = 'matches'; await load(); toast('Матч назначен! Контакты открыты'); })
+        .catch(ex => { $('#ac-err').textContent = ex.message; el.disabled = false; load().catch(() => {}); });
+      break;
+    }
+    case 'copy-oc': case 'copy-code': {
+      const t = $(a === 'copy-oc' ? '#oc' : '#rc').textContent;
+      (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast('Скопировано'), () => { const r = document.createRange(); r.selectNodeContents($(a === 'copy-oc' ? '#oc' : '#rc')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Выделено — скопируйте вручную'); });
+      break;
+    }
+    case 'code-ok': close(); if (b !== '1') openAva(true); break;
+    case 'cancel': act(`/api/challenges/${b}/cancel`, {}, 'Отменено').catch(() => {}); break;
+    case 'score': openScore(b); break;
+    case 'sc': { const n = need(C.bo); C[b] = Math.max(0, Math.min(n, C[b] + +c)); drawScore(); break; }
+    case 'save-score': {
+      const mm = db.matches.find(x => x.id === C.mid), opp = P(other(mm));
+      el.disabled = true;
+      act(`/api/challenges/${C.mid}/score`, { mine: C.x, theirs: C.y }, `Счёт отправлен. Ждём ${first(opp)}`, () => { close(); S.view = 'matches'; render(); })
+        .catch(() => { el.disabled = false; });
+      break;
+    }
+    case 'ok': el.disabled = true; act(`/api/challenges/${b}/confirm`, {}, r => r.won ? `Победа! +${r.d} к рейтингу` : `Засчитано. −${r.d}`).catch(() => { el.disabled = false; }); break;
+    case 'no': openScore(b, 'Какой был счёт?'); break;
+    case 'rk': S.rankAll = b === 'all'; render(); break;
+    case 'ava': openAva(false); break;
+    case 'ak': A.k = b; drawAva(); break;
+    case 'afur': A.fur = FURS[+b]; drawAva(); break;
+    case 'ava-save': act('/api/avatar', { k: A.k, fur: A.fur }, 'Аватар сохранён', () => close()).catch(() => {}); break;
+    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [] }; S.auth = 'start'; render(); }); break;
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+/* keep the screen fresh: new challenges, accepted invites, confirmed scores */
+setInterval(() => { if (db.me && document.visibilityState === 'visible' && !document.querySelector('.scrim')) load().catch(() => {}); }, 20000);
+document.addEventListener('visibilitychange', () => { if (db.me && document.visibilityState === 'visible') load().catch(() => {}); });
+api('/api/me').then(r => r.me ? load() : render()).catch(() => render());
+})();
+</script>
+</body>
+</html>
