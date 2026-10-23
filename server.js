@@ -532,8 +532,10 @@ async function housekeeping(){
 
 /* ---- the app itself ---- */
 app.get('/health', (req, res) => res.json({ ok: true }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html' }));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// the page itself is never cached, so phones always get the latest version after a deploy
+const noCache = res => res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html', setHeaders: (res, file) => { if (file.endsWith('.html')) noCache(res); } }));
+app.get('*', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
 (async () => {
   for (let i = 0; i < 10; i++){ try { await migrate(); break; } catch (e) { console.error('DB not ready:', e.message); await new Promise(r => setTimeout(r, 3000)); if (i === 9) process.exit(1); } }

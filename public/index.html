@@ -316,7 +316,18 @@ select.input:invalid{color:var(--muted)}
   .scrim{align-items:center}
   .sheet{border-radius:30px}
 }
-@media (max-width:899px){ .split{display:contents} .split>div{display:contents} .split>div>*{flex-shrink:0} }
+/* phones: plain stacked blocks, nothing is allowed to shrink (Safari/Chrome on iPhone squeezed cards on top of each other) */
+@media (max-width:899px){
+  /* normal block flow: every card keeps its natural height, spacing by margins */
+  .view{display:block}
+  .view>*+*{margin-top:20px}
+  .split,.split>div{display:block}
+  .split>div+div{margin-top:20px}
+  .split>div>*+*{margin-top:18px}
+  .split>div:empty{display:none}
+  .split .empty{min-height:150px}
+  .view>.board,.view>.list{margin-top:16px}
+}
 </style>
 
 </head>
