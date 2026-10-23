@@ -219,7 +219,17 @@ select.input:invalid{color:var(--muted)}
 .mlist .item{position:relative;margin-top:6px}
 .mlist .item.tap{cursor:pointer}
 .mlist .item.on{box-shadow:inset 0 0 0 2.5px var(--ball)}
-.mnum{position:absolute;top:-8px;left:-6px;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--navy);color:#fff;font-family:var(--f-big);font-weight:700;font-size:.78rem;display:grid;place-items:center;box-shadow:0 0 0 2.5px var(--bg)}
+.mrow{align-items:flex-start}
+.mrow>.av,.mrow>.mst{margin-top:4px}
+.mn{flex:none;width:30px;height:30px;margin-top:14px;border-radius:50%;background:var(--navy);color:#fff;font-family:var(--f-big);font-weight:700;font-size:.9rem;display:grid;place-items:center}
+.mrow .nm{white-space:normal;overflow-wrap:anywhere}
+.mrow .st{font-weight:700;font-size:.92rem;color:var(--muted);margin-top:4px;line-height:1.3}
+.mrow .st.go{color:#D32F25}.mrow .st.soon{color:#B5470F}
+.mi-vs{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border-radius:22px;padding:18px}
+.mi-vs .p{display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:800;min-width:0;max-width:38%;text-align:center;overflow-wrap:anywhere}
+.mi-vs .av{width:72px;height:72px}
+.mi-vs .sc{font-family:var(--f-big);font-weight:800;font-size:2.4rem}
+.mi-res{text-align:center;font-weight:800;font-size:1.1rem}.mi-res.win{color:var(--win)}.mi-res.loss{color:var(--loss)}
 .mst{flex:none;font-weight:800;font-size:.85rem;padding:7px 11px;border-radius:999px;background:var(--soft);color:var(--muted);white-space:nowrap}
 .mst.go{background:#E5352B;color:#fff}.mst.soon{background:var(--ball-soft);color:#B5470F}
 .notes{display:flex;flex-direction:column;gap:8px}
@@ -801,8 +811,11 @@ function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]
 
 function vMatches(){
   const n = nextMatch();
-  // every match of mine, newest first (cancelled ones are left out)
-  const all = db.matches.filter(m => mine(m) && m.status !== 'cancelled').sort((a, b) => b.when - a.when);
+  const newest = (a, b) => b.when - a.when;
+  // 1) matches to play or to settle the score — numbered; 2) my challenges nobody took yet; 3) history
+  const active = db.matches.filter(m => mine(m) && (m.status === 'booked' || m.status === 'check')).sort(newest);
+  const pending = db.matches.filter(m => m.a === db.me && (m.status === 'open' || m.status === 'invite')).sort(newest);
+  const hist = db.matches.filter(m => mine(m) && m.status === 'done').sort(newest);
   return `
   <div class="top"><h1>Матчи</h1>${bellBtn()}</div>
   <div class="split">
@@ -824,18 +837,21 @@ function vMatches(){
       </div>` : `<div class="empty"><b>Нет запланированных матчей</b>Примите вызов на главной</div>`}
     </div>
     <div>
-      ${all.length ? `<div class="sec-title"><h2>Все матчи</h2></div><div class="list mlist">${all.map((m, i) => {
-        const o = m.b ? P(other(m)) : null, won = m.winner === db.me, active = m.status === 'booked' || m.status === 'check';
-        const sub = m.status === 'done' ? `${scoreFor(m)} · ${when(m.when)}` : m.status === 'check' ? `Счёт ${scoreFor(m)} · ${when(m.when)}`
-          : m.status === 'open' ? `Ждём соперника · ${when(m.when)}` : m.status === 'invite' ? `Ждём ответа · ${when(m.when)}` : when(m.when);
-        const right = m.status === 'done' ? `<b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' + m.d : '−' + m.dl}</b>`
-          : m.status === 'check' && m.by !== db.me ? '<span class="mst go">Проверить</span>'
-          : m.status === 'check' ? '<span class="mst">Ждём ответа</span>'
-          : m.status === 'booked' ? (m.when < Date.now() ? '<span class="mst go">Внести счёт</span>' : '<span class="mst soon">Скоро</span>')
-          : '<span class="mst">Ждём</span>';
-        const label = m.status === 'open' ? 'Ваш вызов' : (o ? esc(o.name) : 'Игрок');
-        const go = active ? `pick:${m.id}` : (m.status === 'open' || m.status === 'invite') ? `ch:${m.id}` : '';
-        return `<div class="item${go ? ' tap' : ''}${n && n.id === m.id ? ' on' : ''}"${go ? ` data-a="${go}" role="button" tabindex="0"` : ''}><span class="mnum">${all.length - i}</span>${o && m.status !== 'open' ? av(o) : '<span class="av" style="--h:22">?</span>'}<div class="txt"><p class="nm">${label}</p><p class="sub">${esc(sub)}</p></div>${right}</div>`;
+      ${active.length ? `<div class="sec-title"><h2>Активные</h2></div><div class="list mlist">${active.map((m, i) => {
+        const o = P(other(m)), past = m.when < Date.now();
+        const st = m.status === 'check'
+          ? (m.by !== db.me ? `${first(P(m.by))} внёс счёт ${scoreFor(m)} — подтвердите до ${dueText(m)}` : `Вы внесли счёт ${scoreFor(m)} — ждём ${first(o)} до ${dueText(m)}`)
+          : past ? 'Матч прошёл — внесите счёт' : `${m.place} · до ${need(m.bo)} побед`;
+        const tone = (m.status === 'check' && m.by !== db.me) || (m.status === 'booked' && past) ? 'go' : m.status === 'booked' ? 'soon' : '';
+        return `<div class="item tap mrow${n && n.id === m.id ? ' on' : ''}" data-a="pick:${m.id}" role="button" tabindex="0"><span class="mn">${i + 1}</span>${av(o)}<div class="txt"><p class="nm">Вы — ${esc(o.name)}</p><p class="sub">${esc(when(m.when))}</p><p class="st ${tone}">${esc(st)}</p></div></div>`;
+      }).join('')}</div>` : ''}
+      ${pending.length ? `<div class="sec-title"><h2>Ваши вызовы</h2></div><div class="list">${pending.map(m => {
+        const o = m.b ? P(m.b) : null;
+        return `<div class="item tap" data-a="ch:${m.id}" role="button" tabindex="0">${o ? av(o) : '<span class="av" style="--h:22">?</span>'}<div class="txt"><p class="nm">${o ? esc(o.name) : 'Любой игрок'}</p><p class="sub">${esc(when(m.when))} · ${o ? 'ждём ответа' : 'ждём соперника'}</p></div><span class="mst">Ждём</span></div>`;
+      }).join('')}</div>` : ''}
+      ${hist.length ? `<div class="sec-title"><h2>История матчей</h2></div><div class="list">${hist.map(m => {
+        const o = P(other(m)), won = m.winner === db.me;
+        return `<div class="item tap" data-a="mi:${m.id}" role="button" tabindex="0">${av(o)}<div class="txt"><p class="nm">Вы — ${esc(o.name)}</p><p class="sub">${scoreFor(m)} · ${esc(when(m.when))}</p></div><b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' + m.d : '−' + m.dl}</b></div>`;
       }).join('')}</div>` : ''}
     </div>
   </div>`;
@@ -1165,6 +1181,22 @@ function openChallenge(mid){
   if (o.id) api('/api/players/' + o.id).then(info => { if ($('.chw') && document.querySelector(`.sheet [data-a="yes:${m.id}"], .sheet [data-a="cancel:${m.id}"]`)) draw(info); }).catch(() => {});
 }
 
+/* a finished match: who, when, where, score and rating change — contacts were deleted after the match */
+function openMatchInfo(mid){
+  const m = db.matches.find(x => x.id === mid); if (!m) return;
+  const o = P(other(m)), won = m.winner === db.me;
+  sheet(`${head('Матч')}
+    <div class="mi-vs"><div class="p">${av(me())}<span>Вы</span></div><span class="sc num">${scoreFor(m)}</span><div class="p">${av(o)}<span>${esc(o.name)}</span></div></div>
+    <p class="mi-res ${won ? 'win' : 'loss'}">${won ? `Победа · +${m.d} к рейтингу` : `Поражение · −${m.dl} к рейтингу`}</p>
+    <div class="chd">
+      <div><span>Когда</span><b>${esc(fullWhen(m.when))}</b></div>
+      <div><span>Где</span><b>${esc(m.place)}</b></div>
+      <div><span>Формат</span><b>До ${need(m.bo)} побед</b></div>
+      <div><span>Соперник</span><b>${esc(o.name)}${o.city ? ' · ' + esc(o.city) : ''} · ${esc(ratingText(o))}</b></div>
+    </div>
+    <p class="lockn">${LOCK}Контакты удаляются после матча. Чтобы сыграть снова, бросьте новый вызов.</p>`);
+}
+
 /* accepting a challenge = sharing your contact with that opponent */
 let AC;
 function openAccept(mid){
@@ -1230,6 +1262,7 @@ document.addEventListener('click', e => {
     }
     case 'join': case 'yes': openAccept(b); break;
     case 'ch': openChallenge(b); break;
+    case 'mi': openMatchInfo(b); break;
     case 'pick': S.matchFocus = b; render(); { const v = $('.view'); if (v) v.scrollTo({ top: 0, behavior: 'smooth' }); } break;
     case 'decline': el.disabled = true; act(`/api/challenges/${b}/cancel`, {}, 'Вызов отклонён', () => close()).catch(() => { el.disabled = false; }); break;
     case 'ct': { const box = AC && $('#ac-err') ? AC : C; if ($('#c-val')) box.ct.val = $('#c-val').value; box.ct.type = b; if (box === AC) openAccept(AC.mid); else { keepNew(); drawNew(); } break; }
