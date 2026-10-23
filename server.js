@@ -579,6 +579,16 @@ app.post('/api/challenges/:id/reject', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// public card of a player for the challenge details: record and last 5 results (no contacts)
+app.get('/api/players/:id', wrap(async (req, res) => {
+  await must(req);
+  const u = (await q('SELECT * FROM users WHERE id=$1', [req.params.id])).rows[0];
+  if (!u) bad('Игрок не найден', 404);
+  const last = (await q(`SELECT winner FROM matches WHERE status='done' AND (a=$1 OR b=$1) ORDER BY updated_at DESC LIMIT 5`, [u.id])).rows;
+  const rank = u.wins + u.losses > 0 ? +(await q(`SELECT count(*) FROM users WHERE wins + losses > 0 AND rating > $1`, [u.rating])).rows[0].count + 1 : null;
+  res.json({ player: pub(u), form: last.map(r => r.winner === u.id ? 'W' : 'L'), rank });
+}));
+
 /* ---- housekeeping: expire stale matches and wipe their contacts ---- */
 async function housekeeping(){
   try {

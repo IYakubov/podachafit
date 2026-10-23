@@ -112,6 +112,21 @@ select.input:invalid{color:var(--muted)}
 .list>*,.board>*{flex-shrink:0}
 .item{display:flex;align-items:center;gap:14px;background:var(--card);color:var(--ink);border-radius:20px;padding:13px 14px;min-height:78px}
 .item.hot{box-shadow:inset 0 0 0 2.5px var(--ball)}
+.item.tap{cursor:pointer;transition:transform .12s}.item.tap:active{transform:scale(.985)}
+.chw{display:flex;align-items:center;gap:16px;background:var(--card);border-radius:22px;padding:16px}
+.chw .av{width:76px;height:76px}
+.chw .nm{font-family:var(--f-big);font-weight:700;font-size:1.35rem;overflow-wrap:anywhere;line-height:1.1}
+.chw .sub{color:var(--muted);font-weight:600;margin-top:4px}
+.chw .rec{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.chw .rec i{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#fff}
+.chw .rec i svg{width:18px;height:18px}.chw .rec i.W{background:var(--win)}.chw .rec i.L{background:var(--loss)}
+.chd{background:var(--card);border-radius:22px;padding:6px 16px}
+.chd div{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:12px 0;border-bottom:1.5px solid var(--line);align-items:baseline}
+.chd div:last-child{border-bottom:0}
+.chd span{color:var(--muted);font-weight:700;font-size:.92rem}
+.chd b{font-weight:800;font-size:1.08rem;overflow-wrap:anywhere}
+.lockn{display:flex;gap:10px;align-items:center;color:var(--muted);font-weight:700;font-size:.95rem;background:var(--card);border-radius:18px;padding:12px 14px}
+.lockn svg{flex:none;width:22px;height:22px}
 .av svg{width:100%;height:100%;display:block}
 .av:has(svg){background:#FFFFFF;border:1.5px solid #14110F}
 .av{--h:210;width:50px;height:50px;border-radius:50%;overflow:hidden;flex:none;display:grid;place-items:center;box-sizing:border-box;font-family:var(--f-big);font-weight:700;font-size:1rem;background:hsl(var(--h) 65% var(--avl,90%));color:hsl(var(--h) 60% var(--avd,30%))}
@@ -761,8 +776,9 @@ function vHome(){
       ${rows.length ? `<div class="list">${rows.map(({ m, hot }) => {
         const opp = P(m.by && m.status === 'check' ? m.by : m.a);
         const sub = m.status === 'check' ? `Внёс счёт ${scoreFor(m)}` : (hot ? 'Вам · ' : '') + when(m.when) + (opp.city && opp.city !== p.city ? ' · ' + opp.city : '');
-        return `<div class="item${hot ? ' hot' : ''}">${av(opp)}<div class="txt"><p class="nm">${esc(short(opp))}</p><p class="sub">${esc(sub)}</p></div>
-          ${hot ? (m.status === 'check' ? `<button class="btn main sm" data-a="go:matches">Проверить</button>` : `<button class="btn main sm" data-a="yes:${m.id}">Принять</button>`) : `<button class="btn alt sm" data-a="join:${m.id}">Играть</button>`}</div>`;
+        const go = m.status === 'check' ? 'go:matches' : `ch:${m.id}`;
+        return `<div class="item tap${hot ? ' hot' : ''}" data-a="${go}" role="button" tabindex="0">${av(opp)}<div class="txt"><p class="nm">${esc(short(opp))}</p><p class="sub">${esc(sub)}</p></div>
+          ${hot ? (m.status === 'check' ? `<button class="btn main sm" data-a="go:matches">Проверить</button>` : `<button class="btn main sm" data-a="ch:${m.id}">Открыть</button>`) : `<button class="btn alt sm" data-a="ch:${m.id}">Открыть</button>`}</div>`;
       }).join('')}</div>` : `<div class="empty"><b>Пока нет вызовов</b>Бросьте первый — кто-нибудь примет</div>`}
     </div>
   </div>`;
@@ -1097,6 +1113,39 @@ function contactRow(m){
     <a class="btn main sm" href="${esc(link)}" target="_blank" rel="noopener">${isTg(c) ? 'Написать' : 'Позвонить'}</a></div>`;
 }
 
+/* challenge details: who, where, when — the contact stays hidden until you accept */
+const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
+const CUP_I = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4.5a2.5 2.5 0 0 0 2.6 3.6M17 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 14v3.5M8.5 20.5h7M9.5 17.5h5v3h-5z"/></svg>';
+function fullWhen(t){
+  const d = new Date(t), s = d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  return s.replace(/^./, c => c.toUpperCase()) + ', ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+function openChallenge(mid){
+  const m = db.matches.find(x => x.id === mid);
+  if (!m) { toast('Этот вызов уже недоступен'); return; }
+  const o = P(m.a), mineCh = m.a === db.me, toMe = m.status === 'invite' && m.b === db.me;
+  const rec = o.w + o.l > 0 ? `${plural(o.w, 'победа', 'победы', 'побед')} · ${plural(o.l, 'поражение', 'поражения', 'поражений')}` : 'Ещё не играл в Подаче';
+  const draw = info => {
+    const form = info && info.form.length ? `<div class="rec">${info.form.map(f => `<i class="${f}" title="${f === 'W' ? 'Победа' : 'Поражение'}">${f === 'W' ? CUP_I : CUP_I.replace('</svg>', '<path d="M3 3l18 18"/></svg>')}</i>`).join('')}</div>` : '';
+    const rk = info && info.rank ? ` · ${info.rank}-е место` : '';
+    sheet(`${head(mineCh ? 'Ваш вызов' : toMe ? 'Вам бросили вызов' : 'Вызов')}
+      <div class="chw">${av(o)}<div><p class="nm">${esc(o.name)}</p><p class="sub">${esc(o.city || '')}${o.city ? ' · ' : ''}${esc(ratingText(o))}${rk}</p><p class="sub">${esc(rec)}</p>${form}</div></div>
+      <div class="chd">
+        <div><span>Когда</span><b>${esc(fullWhen(m.when))}</b></div>
+        <div><span>Где</span><b>${esc(m.place)}</b></div>
+        <div><span>Формат</span><b>До ${need(m.bo)} побед</b></div>
+        <div><span>Кому</span><b>${m.status === 'invite' ? (toMe ? 'Лично вам' : esc(P(m.b).name)) : 'Любому игроку'}</b></div>
+      </div>
+      ${mineCh ? `<p class="lockn">${LOCK}Ваш контакт увидит только тот, кто примет вызов.</p>
+        <button class="btn ghost" data-a="cancel:${m.id}">Отменить вызов</button>`
+      : `<p class="lockn">${LOCK}Контакт ${esc(o.name)} откроется, когда вы примете вызов. Ваш контакт увидит только этот игрок.</p>
+        <button class="btn main" data-a="yes:${m.id}">Принять вызов</button>
+        ${toMe ? `<button class="btn ghost" data-a="decline:${m.id}">Отклонить</button>` : ''}`}`);
+  };
+  draw(null);
+  if (o.id) api('/api/players/' + o.id).then(info => { if ($('.chw') && document.querySelector(`.sheet [data-a="yes:${m.id}"], .sheet [data-a="cancel:${m.id}"]`)) draw(info); }).catch(() => {});
+}
+
 /* accepting a challenge = sharing your contact with that opponent */
 let AC;
 function openAccept(mid){
@@ -1161,6 +1210,8 @@ document.addEventListener('click', e => {
       break;
     }
     case 'join': case 'yes': openAccept(b); break;
+    case 'ch': openChallenge(b); break;
+    case 'decline': el.disabled = true; act(`/api/challenges/${b}/cancel`, {}, 'Вызов отклонён', () => close()).catch(() => { el.disabled = false; }); break;
     case 'ct': { const box = AC && $('#ac-err') ? AC : C; if ($('#c-val')) box.ct.val = $('#c-val').value; box.ct.type = b; if (box === AC) openAccept(AC.mid); else { keepNew(); drawNew(); } break; }
     case 'accept-go': {
       const cv = normContact(AC.ct.type, $('#c-val').value);
@@ -1178,7 +1229,7 @@ document.addEventListener('click', e => {
       break;
     }
     case 'code-ok': close(); if (b !== '1') openAva(true); break;
-    case 'cancel': act(`/api/challenges/${b}/cancel`, {}, 'Отменено').catch(() => {}); break;
+    case 'cancel': act(`/api/challenges/${b}/cancel`, {}, 'Отменено', () => { if ($('.chw')) close(); }).catch(() => {}); break;
     case 'score': openScore(b); break;
     case 'sc': { const n = need(C.bo); C[b] = Math.max(0, Math.min(n, C[b] + +c)); drawScore(); break; }
     case 'save-score': {

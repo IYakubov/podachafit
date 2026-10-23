@@ -8,6 +8,7 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
 
 - **Accounts:** a nickname, a city and a password. No email, phone or real name. At sign-up the player gets a one-time recovery code (`PDCH-XXXX-XXXX`) to reset a forgotten password.
 - **Challenges:** open to anyone or sent to a specific player, with a day, time, place and format (to 2 or 3 wins).
+- **Challenge details:** tapping a challenge opens who is calling (nickname, city, rating, record, last 5 results), the full date and time, the venue, the format and who it is for. The caller's contact is not sent to the app until you accept.
 - **Contacts:** whoever creates or accepts a challenge enters a Telegram username or phone number. Only the opponent sees it, only after the challenge is accepted, and it is deleted when the match is finished, cancelled or expires.
 - **Scores:** one player enters the score. Within 24 hours the opponent can confirm it, correct it (then the first player gets 24 hours to answer the new score) or reject it (the match goes back to «enter score»). If the opponent does nothing for 24 hours, the entered score counts and ratings are updated.
 - **Rating:** Elo-based (like German TTR and US USATT), calculated on the server only. Everyone starts at 1000 internally but is shown as "Новичок" until the first confirmed match. The winner gains the full Elo amount and the loser loses half (as in the Russian amateur RTTF rating). K = 48 for a player's first 10 matches, then 32. A convincing win counts more: 3:0 ×1.2, 3:1 ×1.07, 3:2 ×0.93.
@@ -62,3 +63,4 @@ Then open http://localhost:3000.
 | POST | `/api/challenges/:id/score` | `{mine, theirs}` |
 | POST | `/api/challenges/:id/confirm` | |
 | POST | `/api/challenges/:id/reject` | opponent rejects the reported score |
+| GET | `/api/players/:id` | public player card: record, last 5 results, rank (no contacts) |
