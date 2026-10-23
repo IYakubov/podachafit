@@ -215,6 +215,21 @@ select.input:invalid{color:var(--muted)}
 .wheel .it.on{color:var(--ink);font-size:1.22rem;font-weight:800}
 .wheels .colon2{position:relative;z-index:1;display:grid;place-items:center;font-weight:800;font-size:1.25rem;color:var(--ink)}
 
+/* telegram card */
+.tg-card{background:var(--card);color:var(--ink);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.tg-head{display:flex;align-items:center;gap:12px}
+.tg-head .ic{width:40px;height:40px;border-radius:50%;background:#2AABEE;display:grid;place-items:center;flex:none}
+.tg-head .ic svg{width:22px;height:22px}
+.tg-head b{display:block;font-weight:800}
+.tg-head span{color:var(--muted);font-weight:600;font-size:.88rem}
+.tg-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:700;font-size:.95rem}
+.sw{position:relative;width:52px;height:32px;flex:none;border-radius:16px;border:0;background:var(--line);transition:background .15s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.sw[aria-checked="true"]{background:var(--win)}
+.sw[aria-checked="true"]::after{transform:translateX(20px)}
+.btn.tg{background:#2AABEE;color:#fff}
+.tg-card .btn.link{color:var(--muted)}
+
 /* ---------- sheet ---------- */
 .scrim{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
 .sheet{width:100%;max-width:560px;background:var(--sheet);color:var(--ink);border-radius:30px 30px 0 0;padding:22px max(20px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px;max-height:100%;overflow:auto;animation:up .2s ease}
@@ -307,6 +322,7 @@ const I = {
   match:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   rank:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-8h5v8M9.5 21V5h5v16M15 21v-5h5v5"/></svg>',
   me:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  tg:'<svg viewBox="0 0 24 24" fill="#fff"><path d="M21.4 4.2 2.9 11.4c-1.3.5-1.2 1.3-.2 1.6l4.7 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.5l2.3-2.2 4.7 3.5c.9.5 1.5.2 1.7-.8l3.1-14.6c.3-1.3-.5-1.9-1.4-1.6zM9.6 14.6l-.4 4 -1.4-4.5 10.4-6.6-8.6 7.1z"/></svg>',
   bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></svg>',
   plus:'<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -757,6 +773,7 @@ function vMe(){
     <span>Последние матчи · ${pct}% побед</span>
     ${form.length ? `<div class="form-row">${form.map(f => `<i class="${f}">${f === 'W' ? 'В' : 'П'}</i>`).join('')}</div>` : '<span style="color:var(--ink)">Пока нет сыгранных матчей</span>'}
   </div>
+  <div id="tg-card"></div>
   <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px">
     <button class="btn ghost" data-a="logout">Выйти</button>
   </div>`;
@@ -775,6 +792,23 @@ function render(){
   $('#app').innerHTML = `
     <nav class="rail"><div class="logo"><svg class="brand" viewBox="120 58 960 290" role="img" aria-label="Подача FIT"><defs><linearGradient id="pd-lime2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#EE5A12"/></linearGradient></defs><text x="600" y="204" text-anchor="middle" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="900" font-style="italic" letter-spacing="-8" textLength="940" lengthAdjust="spacingAndGlyphs">Подача</text><g fill="url(#pd-lime2)"><path d="M190 269 L525 239 L545 239 L522 251 L190 278 Q177 278 190 269Z"/><path d="M260 291 L518 270 L532 270 L515 280 L260 298 Q248 298 260 291Z"/><path d="M350 310 L520 299 L533 299 L517 307 L350 316 Q340 316 350 310Z"/></g><circle cx="574" cy="278" r="43" fill="url(#pd-lime2)"/><path d="M574 236 C592 249 599 266 592 282 C586 296 577 309 574 320" fill="none" stroke="#5A2205" stroke-width="4" stroke-linecap="round" opacity=".85"/><text x="635" y="335" fill="url(#pd-lime2)" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4">FIT</text></svg></div>${tabs}<button class="btn main" data-a="new">${I.plus}Вызов</button></nav>
     <div class="screen"><main class="view">${view}</main><nav class="tabs">${tabs}</nav></div>`;
+  if (S.view === 'me') drawTg();
+}
+/* ---------- Telegram alerts ---------- */
+function drawTg(refresh){
+  const box = $('#tg-card'); if (!box) return;
+  if (!S.tg || refresh){ api('/api/tg').then(r => { S.tg = r; paintTg(); }).catch(() => {}); }
+  paintTg();
+}
+function paintTg(){
+  const box = $('#tg-card'), t = S.tg; if (!box) return;
+  if (!t || !t.available){ box.innerHTML = ''; return; }
+  const sw = (key, on, label) => `<div class="tg-row"><span>${label}</span><button class="sw" role="switch" aria-checked="${on}" aria-label="${label}" data-a="tgsw:${key}"></button></div>`;
+  box.innerHTML = `<div class="tg-card">
+    <div class="tg-head"><span class="ic">${I.tg}</span><div><b>Уведомления в Telegram</b><span>${t.linked ? 'Подключено · @' + esc(t.bot) : t.pending ? 'Нажмите «Start» в боте и вернитесь сюда' : 'Новые вызовы в вашем городе и ваши матчи'}</span></div></div>
+    ${t.linked ? sw('city', t.city, 'Новые вызовы в моём городе') + sw('mine', t.mine, 'Мои вызовы и матчи') + `<button class="btn link" data-a="tg-off" style="min-height:36px">Отключить Telegram</button>`
+      : `<button class="btn tg" data-a="tg-link">${t.pending ? 'Открыть бота ещё раз' : 'Подключить Telegram'}</button>`}
+  </div>`;
 }
 
 /* ---------- sheets ---------- */
@@ -991,6 +1025,17 @@ document.addEventListener('click', e => {
     case 'no': openScore(b, 'Какой был счёт?'); break;
     case 'rk': S.rankAll = b === 'all'; render(); break;
     case 'notes': openNotes(); break;
+    case 'tg-link': {
+      el.disabled = true;
+      api('/api/tg/link', {}).then(r => {
+        S.tg.pending = true; paintTg();
+        const w = window.open(r.url, '_blank'); if (!w) location.href = r.url;
+        let n = 0; const iv = setInterval(() => { if (++n > 40 || S.view !== 'me'){ clearInterval(iv); return; } api('/api/tg').then(x => { if (x.linked){ clearInterval(iv); S.tg = x; paintTg(); toast('Telegram подключён'); } }).catch(() => {}); }, 3000);
+      }).catch(ex => { toast(ex.message); el.disabled = false; });
+      break;
+    }
+    case 'tgsw': { S.tg[b] = !S.tg[b]; paintTg(); api('/api/tg/prefs', { city: S.tg.city, mine: S.tg.mine }).catch(ex => { S.tg[b] = !S.tg[b]; paintTg(); toast(ex.message); }); break; }
+    case 'tg-off': api('/api/tg/unlink', {}).then(() => { S.tg.linked = false; S.tg.pending = false; paintTg(); toast('Telegram отключён'); }).catch(ex => toast(ex.message)); break;
     case 'note': close(); S.view = b; render(); break;
     case 'perm': try { Notification.requestPermission().then(() => drawNotes()); } catch(e){} break;
     case 'rules': openRules(); break;
@@ -998,7 +1043,7 @@ document.addEventListener('click', e => {
     case 'ak': A.k = b; drawAva(); break;
     case 'afur': A.fur = FURS[+b]; drawAva(); break;
     case 'ava-save': act('/api/avatar', { k: A.k, fur: A.fur }, 'Аватар сохранён', () => close()).catch(() => {}); break;
-    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [], notes: [] }; S.seen = null; S.auth = 'start'; render(); }); break;
+    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [], notes: [] }; S.seen = null; S.tg = null; S.auth = 'start'; render(); }); break;
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });

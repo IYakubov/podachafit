@@ -9,6 +9,8 @@
  *  - an opponent's contact (Telegram / phone) is visible only to the two players of a
  *    booked match and is wiped when the match is finished, cancelled or expires
  *  - the app does not log IP addresses or request bodies
+ *  - Telegram alerts are opt-in: only the numeric chat id is stored, and /stop or
+ *    "Отключить" deletes it
  */
 const path = require('path');
 const crypto = require('crypto');
@@ -108,6 +110,15 @@ async function migrate(){
       read_at timestamptz
     );
     CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, created_at DESC);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS tg_chat bigint;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS tg_city boolean NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS tg_mine boolean NOT NULL DEFAULT true;
+    CREATE INDEX IF NOT EXISTS users_tg_city_idx ON users(city) WHERE tg_chat IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS tg_links (
+      code text PRIMARY KEY,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at timestamptz NOT NULL
+    );
   `);
 }
 
@@ -115,6 +126,74 @@ async function migrate(){
 async function notify(db, userId, kind, matchId, actor){
   if (!userId || userId === actor) return;
   await db.query('INSERT INTO notifications (user_id, kind, match_id, actor) VALUES ($1,$2,$3,$4)', [userId, kind, matchId, actor || null]);
+  tgLater(() => tgPersonal(userId, kind, matchId, actor));
+}
+
+/* ---------------- Telegram bot (optional: active when TELEGRAM_BOT_TOKEN is set) ---------------- */
+const TG = process.env.TELEGRAM_BOT_TOKEN || '';
+const TG_HOOK = crypto.createHash('sha256').update('tg:' + SECRET).digest('hex').slice(0, 32);
+const APP_URL = (process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : 'http://localhost:' + PORT)).replace(/\/$/, '');
+let BOT_NAME = '';
+const h = t => String(t ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+async function tgCall(method, body){
+  if (!TG) return null;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TG}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return await r.json();
+  } catch (e) { console.error('telegram:', method, e.message); return null; }
+}
+async function tgSend(chat, html, button){
+  const r = await tgCall('sendMessage', { chat_id: chat, text: html, parse_mode: 'HTML', disable_web_page_preview: true,
+    reply_markup: button ? { inline_keyboard: [[{ text: button, url: APP_URL }]] } : undefined });
+  // the player blocked the bot or deleted the chat: stop messaging them
+  if (r && !r.ok && (r.error_code === 403 || /chat not found/i.test(r.description || ''))) await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
+  return r;
+}
+const tgQueue = [];
+let tgBusy = false;
+function tgLater(job){ if (!TG) return; tgQueue.push(job); if (!tgBusy) setTimeout(tgDrain, 400); }
+async function tgDrain(){
+  tgBusy = true;
+  while (tgQueue.length){ try { await tgQueue.shift()(); } catch (e) { console.error('telegram job:', e.message); } await new Promise(r => setTimeout(r, 40)); }
+  tgBusy = false;
+}
+const whenRu = t => new Date(t).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+const rateRu = u => u.wins + u.losses > 0 ? `рейтинг ${u.rating}` : 'новичок';
+async function tgPersonal(userId, kind, matchId, actorId){
+  const u = (await q('SELECT tg_chat, tg_mine FROM users WHERE id=$1', [userId])).rows[0];
+  if (!u || !u.tg_chat || !u.tg_mine) return;
+  const m = matchId ? (await q('SELECT * FROM matches WHERE id=$1', [matchId])).rows[0] : null;
+  const a = actorId ? (await q('SELECT nick, rating, wins, losses FROM users WHERE id=$1', [actorId])).rows[0] : null;
+  const who = a ? `<b>${h(a.nick)}</b>` : '';
+  const sc = m && m.sa != null ? (m.a === userId ? `${m.sa}:${m.sb}` : `${m.sb}:${m.sa}`) : '';
+  const txt = {
+    invite: m && `🏓 ${who} (${rateRu(a)}) бросает вам вызов\n${h(whenRu(m.when_at))} · ${h(m.place)} · до ${need(m.bo)} побед`,
+    accepted: m && `✅ ${who} принял(а) ваш вызов\n${h(whenRu(m.when_at))} · ${h(m.place)}\nКонтакт соперника — в приложении.`,
+    declined: `❌ ${who} отклонил(а) ваш вызов`,
+    cancelled: m && `❌ ${who} отменил(а) матч ${h(whenRu(m.when_at))}`,
+    score: m && `📝 ${who} внёс счёт <b>${sc}</b>. Подтвердите, если всё верно.`,
+    confirmed: m && (m.winner === userId ? `🏆 ${who} подтвердил(а) счёт ${sc}. Победа! <b>+${m.delta}</b> к рейтингу` : `${who} подтвердил(а) счёт ${sc}. <b>−${m.delta_l ?? m.delta}</b> к рейтингу`),
+    auto: m && `Счёт ${sc} засчитан автоматически: соперник не ответил 3 дня.`
+  }[kind];
+  if (txt) await tgSend(u.tg_chat, txt, 'Открыть Подачу');
+}
+async function tgCityAlert(matchId){
+  const m = (await q(`SELECT m.*, u.nick, u.city, u.rating, u.wins, u.losses FROM matches m JOIN users u ON u.id=m.a WHERE m.id=$1`, [matchId])).rows[0];
+  if (!m || m.status !== 'open') return;
+  const people = (await q(`SELECT tg_chat FROM users WHERE city=$1 AND tg_chat IS NOT NULL AND tg_city AND id<>$2`, [m.city, m.a])).rows;
+  const txt = `🏓 Новый вызов в городе ${h(m.city)}\n<b>${h(m.nick)}</b> (${rateRu(m)}) ищет соперника\n${h(whenRu(m.when_at))} · ${h(m.place)} · до ${need(m.bo)} побед`;
+  for (const p of people){ tgLater(() => tgSend(p.tg_chat, txt, 'Принять вызов')); }
+}
+async function tgSetup(){
+  if (!TG) { console.log('Telegram: TELEGRAM_BOT_TOKEN not set, bot disabled'); return; }
+  const me = await tgCall('getMe', {});
+  if (!me || !me.ok) { console.error('Telegram: token rejected'); return; }
+  BOT_NAME = me.result.username;
+  if (/^https:/.test(APP_URL)){
+    const r = await tgCall('setWebhook', { url: `${APP_URL}/tg/${TG_HOOK}`, secret_token: TG_HOOK, allowed_updates: ['message'], drop_pending_updates: true });
+    console.log('Telegram: @' + BOT_NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
+  } else console.log('Telegram: @' + BOT_NAME + ' (no https APP_URL, webhook not set)');
+  await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Подключить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
 }
 
 /* ---------------- sessions: signed cookie, no session table ---------------- */
@@ -226,6 +305,53 @@ app.post('/api/avatar', wrap(async (req, res) => {
   res.json({ me: pub(r.rows[0]) });
 }));
 
+/* ---- Telegram linking ---- */
+app.get('/api/tg', wrap(async (req, res) => {
+  const u = await must(req);
+  res.json({ available: !!(TG && BOT_NAME), bot: BOT_NAME, linked: !!u.tg_chat, city: u.tg_city, mine: u.tg_mine });
+}));
+app.post('/api/tg/link', wrap(async (req, res) => {
+  const u = await must(req);
+  if (!TG || !BOT_NAME) bad('Telegram-бот пока не подключён');
+  const code = crypto.randomBytes(12).toString('base64url');
+  await q(`DELETE FROM tg_links WHERE user_id=$1 OR expires_at < now()`, [u.id]);
+  await q(`INSERT INTO tg_links (code, user_id, expires_at) VALUES ($1,$2, now() + interval '15 minutes')`, [code, u.id]);
+  res.json({ url: `https://t.me/${BOT_NAME}?start=${code}` });
+}));
+app.post('/api/tg/prefs', wrap(async (req, res) => {
+  const u = await must(req);
+  await q('UPDATE users SET tg_city=$2, tg_mine=$3 WHERE id=$1', [u.id, !!req.body.city, !!req.body.mine]);
+  res.json({ ok: true });
+}));
+app.post('/api/tg/unlink', wrap(async (req, res) => {
+  const u = await must(req);
+  if (u.tg_chat) tgLater(() => tgSend(u.tg_chat, 'Уведомления отключены. Подключить снова можно в профиле на сайте.'));
+  await q('UPDATE users SET tg_chat=NULL WHERE id=$1', [u.id]);
+  res.json({ ok: true });
+}));
+app.post('/tg/:hook', wrap(async (req, res) => {
+  if (req.params.hook !== TG_HOOK || req.get('X-Telegram-Bot-Api-Secret-Token') !== TG_HOOK) return res.sendStatus(404);
+  res.json({ ok: true });
+  const msg = req.body && req.body.message;
+  if (!msg || !msg.chat || msg.chat.type !== 'private' || typeof msg.text !== 'string') return;
+  const chat = msg.chat.id, text = msg.text.trim();
+  if (/^\/stop/.test(text)){
+    await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
+    return tgSend(chat, 'Уведомления отключены. Подключить снова можно в профиле на сайте.');
+  }
+  const code = (text.match(/^\/start\s+([A-Za-z0-9_-]{8,64})$/) || [])[1];
+  if (!code){
+    const linked = (await q('SELECT nick FROM users WHERE tg_chat=$1', [chat])).rows[0];
+    return tgSend(chat, linked ? `Вы подключены как <b>${h(linked.nick)}</b>. Я пришлю новые вызовы в вашем городе и новости о ваших матчах.\n/stop — отключить.`
+      : 'Привет! Чтобы получать уведомления, откройте сайт → Профиль → «Подключить Telegram».', 'Открыть Подачу');
+  }
+  const link = (await q(`DELETE FROM tg_links WHERE code=$1 AND expires_at > now() RETURNING user_id`, [code])).rows[0];
+  if (!link) return tgSend(chat, 'Ссылка устарела. Нажмите «Подключить Telegram» в профиле ещё раз.', 'Открыть Подачу');
+  await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
+  const u = (await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1 RETURNING nick, city', [link.user_id, chat])).rows[0];
+  tgSend(chat, `Готово, <b>${h(u.nick)}</b>! 🏓\nЯ пришлю:\n• новые вызовы в городе ${h(u.city)}\n• вызовы вам, принятые матчи и счета\n\nНастроить или отключить — в профиле на сайте или командой /stop.`, 'Открыть Подачу');
+}));
+
 /* ---- everything the app shows, in one request ---- */
 app.get('/api/state', wrap(async (req, res) => {
   const u = await must(req);
@@ -267,6 +393,7 @@ app.post('/api/challenges', wrap(async (req, res) => {
   const r = await q(`INSERT INTO matches (a, b, status, bo, when_at, place, ca) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
     [u.id, who || null, who ? 'invite' : 'open', +bo, t, place, c]);
   if (who) await notify(pool, who, 'invite', r.rows[0].id, u.id);
+  else tgLater(() => tgCityAlert(r.rows[0].id));
   res.json({ ok: true });
 }));
 
@@ -343,6 +470,7 @@ app.post('/api/challenges/:id/confirm', wrap(async (req, res) => {
 async function housekeeping(){
   try {
     await q(`DELETE FROM notifications WHERE created_at < now() - interval '30 days'`);
+    await q(`DELETE FROM tg_links WHERE expires_at < now()`);
     // challenges nobody played: cancelled 3 days after the planned time
     await q(`UPDATE matches SET status='cancelled', ca=NULL, cb=NULL, updated_at=now()
              WHERE status IN ('open','invite','booked') AND when_at < now() - interval '3 days'`);
@@ -360,5 +488,6 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 (async () => {
   for (let i = 0; i < 10; i++){ try { await migrate(); break; } catch (e) { console.error('DB not ready:', e.message); await new Promise(r => setTimeout(r, 3000)); if (i === 9) process.exit(1); } }
   housekeeping(); setInterval(housekeeping, 60 * 60e3);
+  tgSetup().catch(e => console.error('telegram setup:', e.message));
   app.listen(PORT, () => console.log(`podacha.fit listening on ${PORT}`));
 })();

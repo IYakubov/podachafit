@@ -12,6 +12,7 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
 - **Scores:** one player enters the score and the other confirms it. Ratings change only after confirmation. A score left unconfirmed for 3 days counts as confirmed.
 - **Rating:** Elo-based (like German TTR and US USATT), calculated on the server only. Everyone starts at 1000 internally but is shown as "Новичок" until the first confirmed match. The winner gains the full Elo amount and the loser loses half (as in the Russian amateur RTTF rating). K = 48 for a player's first 10 matches, then 32. A convincing win counts more: 3:0 ×1.2, 3:1 ×1.07, 3:2 ×0.93.
 - **Notifications:** in-app notifications (bell with a counter) when someone challenges you, accepts or declines your challenge, cancels a match, enters a score, or confirms it. Optional browser notifications while the site is open in a tab.
+- **Telegram alerts (optional):** with `TELEGRAM_BOT_TOKEN` set, players can connect Telegram in their profile. The bot sends new open challenges in the player's city and news about their own matches; each can be switched off, and `/stop` disconnects. Only the numeric chat id is stored.
 - **Housekeeping:** challenges nobody played are cancelled 3 days after their planned time, and their contacts are wiped.
 
 ## Privacy
@@ -28,6 +29,8 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (reference to the database)
    - `SESSION_SECRET` = a long random string
    - `NODE_ENV` = `production`
+   - `TELEGRAM_BOT_TOKEN` = token from @BotFather (optional, enables Telegram alerts)
+   - `APP_URL` = public address, e.g. `https://www.podacha.fit` (used for the bot webhook and links)
 4. **Settings → Networking → Generate Domain** to get a public address. Add `podacha.fit` there later as a custom domain.
 
 Tables are created automatically on first start.
