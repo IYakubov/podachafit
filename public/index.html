@@ -215,6 +215,13 @@ select.input:invalid{color:var(--muted)}
 .bell{position:relative;width:48px;height:48px;flex:none;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:var(--on-bg);display:grid;place-items:center}
 .bell svg{width:24px;height:24px}
 .bell .tag{position:absolute;top:-2px;right:-2px;left:auto}
+.tag.red{background:#E5352B;color:#fff;box-shadow:0 0 0 2.5px var(--navy)}
+.mlist .item{position:relative;margin-top:6px}
+.mlist .item.tap{cursor:pointer}
+.mlist .item.on{box-shadow:inset 0 0 0 2.5px var(--ball)}
+.mnum{position:absolute;top:-8px;left:-6px;min-width:26px;height:26px;padding:0 7px;border-radius:13px;background:var(--navy);color:#fff;font-family:var(--f-big);font-weight:700;font-size:.78rem;display:grid;place-items:center;box-shadow:0 0 0 2.5px var(--bg)}
+.mst{flex:none;font-weight:800;font-size:.85rem;padding:7px 11px;border-radius:999px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.mst.go{background:#E5352B;color:#fff}.mst.soon{background:var(--ball-soft);color:#B5470F}
 .notes{display:flex;flex-direction:column;gap:8px}
 .note-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:12px;text-align:left;width:100%}
 .note-item.new{border-color:var(--ball);box-shadow:0 0 0 2px var(--ball-soft)}
@@ -752,7 +759,13 @@ function openCode(code, again){
 /* ---------- views ---------- */
 function todo(){ return db.matches.filter(m => mine(m) && ((m.status === 'invite' && m.b === db.me) || (m.status === 'check' && m.by !== db.me))); }
 const prio = m => m.status === 'check' && m.by !== db.me ? 0 : m.status === 'booked' ? 1 : 2;
-function nextMatch(){ return db.matches.filter(m => mine(m) && ['booked','check'].includes(m.status)).sort((a, b) => prio(a) - prio(b) || a.when - b.when)[0]; }
+function nextMatch(){
+  const act = db.matches.filter(m => mine(m) && ['booked','check'].includes(m.status));
+  const f = S.matchFocus && act.find(m => m.id === S.matchFocus);
+  return f || act.sort((a, b) => prio(a) - prio(b) || a.when - b.when)[0];
+}
+/* matches that need the player's attention: a booked match to play / score, or a score waiting for their answer */
+function attn(){ return db.matches.filter(m => mine(m) && (m.status === 'booked' || (m.status === 'check' && m.by !== db.me))); }
 
 function vHome(){
   const p = me(), rk = rankOf(p.id), t = todo();
@@ -788,8 +801,8 @@ function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]
 
 function vMatches(){
   const n = nextMatch();
-  const waiting = db.matches.filter(m => m !== n && mine(m) && ((m.status === 'open' && m.a === db.me) || (m.status === 'invite' && m.a === db.me) || (m.status === 'check' && m.by === db.me)));
-  const last = db.matches.filter(m => mine(m) && m.status === 'done').sort((a, b) => b.when - a.when).slice(0, 3);
+  // every match of mine, newest first (cancelled ones are left out)
+  const all = db.matches.filter(m => mine(m) && m.status !== 'cancelled').sort((a, b) => b.when - a.when);
   return `
   <div class="top"><h1>Матчи</h1>${bellBtn()}</div>
   <div class="split">
@@ -811,13 +824,18 @@ function vMatches(){
       </div>` : `<div class="empty"><b>Нет запланированных матчей</b>Примите вызов на главной</div>`}
     </div>
     <div>
-      ${waiting.length ? `<div class="sec-title"><h2>Ждут ответа</h2></div><div class="list">${waiting.slice(0, 2).map(m => {
-        const o = m.b ? P(other(m)) : null;
-        return `<div class="item">${o ? av(o) : '<span class="av" style="--h:22">?</span>'}<div class="txt"><p class="nm">${o ? esc(o.name) : 'Любой игрок'}</p><p class="sub">${m.status === 'check' ? 'Ждём подтверждения счёта' : esc(when(m.when))}</p></div>${m.status !== 'check' ? `<button class="btn alt sm" data-a="cancel:${m.id}">Отменить</button>` : ''}</div>`;
-      }).join('')}</div>` : ''}
-      ${last.length ? `<div class="sec-title"><h2>Последние</h2></div><div class="list">${last.map(m => {
-        const o = P(other(m)), won = m.winner === db.me;
-        return `<div class="item">${av(o)}<div class="txt"><p class="nm">${esc(o.name)}</p><p class="sub">${scoreFor(m)}</p></div><b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' + m.d : '−' + m.dl}</b></div>`;
+      ${all.length ? `<div class="sec-title"><h2>Все матчи</h2></div><div class="list mlist">${all.map((m, i) => {
+        const o = m.b ? P(other(m)) : null, won = m.winner === db.me, active = m.status === 'booked' || m.status === 'check';
+        const sub = m.status === 'done' ? `${scoreFor(m)} · ${when(m.when)}` : m.status === 'check' ? `Счёт ${scoreFor(m)} · ${when(m.when)}`
+          : m.status === 'open' ? `Ждём соперника · ${when(m.when)}` : m.status === 'invite' ? `Ждём ответа · ${when(m.when)}` : when(m.when);
+        const right = m.status === 'done' ? `<b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' + m.d : '−' + m.dl}</b>`
+          : m.status === 'check' && m.by !== db.me ? '<span class="mst go">Проверить</span>'
+          : m.status === 'check' ? '<span class="mst">Ждём ответа</span>'
+          : m.status === 'booked' ? (m.when < Date.now() ? '<span class="mst go">Внести счёт</span>' : '<span class="mst soon">Скоро</span>')
+          : '<span class="mst">Ждём</span>';
+        const label = m.status === 'open' ? 'Ваш вызов' : (o ? esc(o.name) : 'Игрок');
+        const go = active ? `pick:${m.id}` : (m.status === 'open' || m.status === 'invite') ? `ch:${m.id}` : '';
+        return `<div class="item${go ? ' tap' : ''}${n && n.id === m.id ? ' on' : ''}"${go ? ` data-a="${go}" role="button" tabindex="0"` : ''}><span class="mnum">${all.length - i}</span>${o && m.status !== 'open' ? av(o) : '<span class="av" style="--h:22">?</span>'}<div class="txt"><p class="nm">${label}</p><p class="sub">${esc(sub)}</p></div>${right}</div>`;
       }).join('')}</div>` : ''}
     </div>
   </div>`;
@@ -865,9 +883,10 @@ function vMe(){
 function render(){
   document.body.classList.toggle('in', !!db.me);
   if (!db.me){ renderAuth(); return; }
-  const n = todo().length;
-  const u = unreadNotes().length;
-  const badge = v => v === 'home' && (n || u) ? `<span class="tag">${n || u}</span>` : '';
+  const n = todo().filter(m => m.status === 'invite').length;
+  const u = unreadNotes().length, a = attn().length;
+  const badge = v => v === 'home' && (n || u) ? `<span class="tag">${n || u}</span>`
+    : v === 'matches' && a ? `<span class="tag red" aria-label="Требуют внимания: ${a}">${a}</span>` : '';
   const tab = (v, icon, label) => `<button class="nav" data-a="go:${v}" ${S.view === v ? 'aria-current="page"' : ''}>${icon}${label}${badge(v)}</button>`;
   const tabs = tab('home', I.home, 'Главная') + tab('matches', I.match, 'Матчи') + tab('rank', I.rank, 'Рейтинг') + tab('me', I.me, 'Профиль');
   const view = { home: vHome, matches: vMatches, rank: vRank, me: vMe }[S.view]();
@@ -1211,6 +1230,7 @@ document.addEventListener('click', e => {
     }
     case 'join': case 'yes': openAccept(b); break;
     case 'ch': openChallenge(b); break;
+    case 'pick': S.matchFocus = b; render(); { const v = $('.view'); if (v) v.scrollTo({ top: 0, behavior: 'smooth' }); } break;
     case 'decline': el.disabled = true; act(`/api/challenges/${b}/cancel`, {}, 'Вызов отклонён', () => close()).catch(() => { el.disabled = false; }); break;
     case 'ct': { const box = AC && $('#ac-err') ? AC : C; if ($('#c-val')) box.ct.val = $('#c-val').value; box.ct.type = b; if (box === AC) openAccept(AC.mid); else { keepNew(); drawNew(); } break; }
     case 'accept-go': {
