@@ -225,6 +225,13 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '20kb' }));
+// one address for everyone: podacha.fit → https://www.podacha.fit
+const CANON = process.env.CANONICAL_HOST || '';
+app.use((req, res, next) => {
+  if (CANON && req.hostname && req.hostname !== CANON && req.hostname.replace(/^www\./, '') === CANON.replace(/^www\./, '') && req.method === 'GET')
+    return res.redirect(301, `https://${CANON}${req.originalUrl}`);
+  next();
+});
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
