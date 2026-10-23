@@ -198,7 +198,7 @@ async function tgSetup(){
   await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Включить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
   if (/^https:/.test(APP_URL)) await tgCall('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Играть', web_app: { url: APP_URL } } });
   await tgCall('setMyShortDescription', { short_description: 'Уведомления Подача FIT 🏓 Новые вызовы по настольному теннису в вашем городе и новости о ваших матчах. podacha.fit' });
-  await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак включить: откройте podacha.fit → Профиль → «Открыть бота Подачи» и нажмите «Start». Или нажмите «Играть» внизу этого чата.\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
+  await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак включить: откройте podacha.fit → Профиль → «Подключить бота» и нажмите «Start». Или нажмите «Играть» внизу этого чата.\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
 }
 
 /* ---------------- sessions: signed cookie, no session table ---------------- */
@@ -434,7 +434,7 @@ app.post('/tg/:hook', wrap(async (req, res) => {
       : 'Привет! Это бот Подачи 🏓 Нажмите «Открыть Подачу» и войдите один раз — после этого я буду присылать вызовы и новости о ваших матчах.', 'Открыть Подачу');
   }
   const link = (await q(`DELETE FROM tg_links WHERE code=$1 AND expires_at > now() RETURNING user_id`, [code])).rows[0];
-  if (!link) return tgSend(chat, 'Ссылка устарела. Нажмите «Открыть бота Подачи» в профиле ещё раз.', 'Открыть Подачу');
+  if (!link) return tgSend(chat, 'Ссылка устарела. Нажмите «Подключить бота» в профиле ещё раз.', 'Открыть Подачу');
   await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
   const u = (await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1 RETURNING nick, city', [link.user_id, chat])).rows[0];
   tgSend(chat, `Готово, <b>${h(u.nick)}</b>! 🏓\nЯ пришлю:\n• новые вызовы в городе ${h(u.city)}\n• вызовы вам, принятые матчи и счета\n\nНастроить или отключить — в профиле на сайте или командой /stop.`, 'Открыть Подачу');
