@@ -153,6 +153,15 @@ select.input:invalid{color:var(--muted)}
 .vs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;text-align:center;gap:12px}
 .vs .sc{font-family:var(--f-big);font-weight:800;font-size:clamp(2.2rem,9vw,3rem);background:var(--navy);padding:4px 14px;border-radius:14px;line-height:1.1}
 .match .note{text-align:center;font-weight:700;color:var(--on-table-2)}
+.mcards{display:flex;flex-direction:column;gap:22px}
+.mcards .match{padding-top:58px}
+.mcn{position:absolute;top:14px;left:14px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-family:var(--f-big);font-weight:700;font-size:1rem;display:grid;place-items:center;z-index:1}
+.match.need .mcn{background:var(--ball)}
+/* a card that waits for this player: background slowly breathes */
+.match.need::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(160deg,#3A2A6E,#7A2E2A);opacity:0;animation:needPulse 2.4s ease-in-out infinite;pointer-events:none}
+.match.need{box-shadow:inset 0 0 0 2.5px rgba(242,106,30,.7)}
+@keyframes needPulse{0%,100%{opacity:0}50%{opacity:.75}}
+@media (prefers-reduced-motion:reduce){.match.need::before{animation:none;opacity:.35}}
 .match .pair{display:grid;grid-template-columns:1fr 1.6fr;gap:10px;position:relative;z-index:1}
 .vs .p{display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:800;min-width:0}
 .vs .p span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -809,42 +818,45 @@ function vHome(){
 const bellBtn = () => { const n = unreadNotes().length; return `<button class="bell" data-a="notes" aria-label="Уведомления${n ? ': ' + n + ' новых' : ''}">${I.bell}${n ? `<span class="tag">${n}</span>` : ''}</button>`; };
 function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]; return `${x}:${y}`; }
 
+/* one full match card (play, enter / confirm the score, opponent's contact) */
+function matchCard(n, num){
+  const past = n.when < Date.now();
+  // pulse only when this player has to act: the match is over without a score, or the opponent waits for this player's confirmation
+  const urgent = (n.status === 'booked' && past) || (n.status === 'check' && n.by !== db.me);
+  return `
+      <div class="match${urgent ? ' need' : ''}">
+        <span class="mcn">${num}</span>
+        <div class="vs"><div class="p">${av(me())}<span>Вы</span></div>${n.status === 'check' ? `<span class="sc num">${scoreFor(n)}</span>` : '<span></span>'}<div class="p">${av(P(other(n)))}<span>${esc(first(P(other(n))))}</span></div></div>
+        ${n.status === 'booked' ? `
+          <p class="when">${esc(when(n.when))}<small>${esc(n.place)} · до ${need(n.bo)} побед</small></p>
+          ${past ? '<p class="note">Матч прошёл — внесите счёт</p>' : ''}
+          <button class="btn main" data-a="score:${n.id}">Внести счёт</button>`
+        : n.by === db.me ? `
+          <p class="when">${esc(when(n.when))}<small>${esc(n.place)}</small></p>
+          <p class="note">Ждём, когда ${esc(first(P(other(n))))} подтвердит. Если не ответит до ${esc(dueText(n))}, счёт засчитается автоматически.</p>
+          <button class="btn ghost" data-a="score:${n.id}">Изменить счёт</button>`
+        : `
+          <p class="when">${esc(when(n.when))}<small>${esc(n.place)}</small></p>
+          <p class="note">${esc(first(P(n.by)))} внёс счёт. Подтвердите, исправьте или отклоните до ${esc(dueText(n))} — иначе он засчитается автоматически.</p>
+          <button class="btn main" data-a="ok:${n.id}">Да, всё верно</button>
+          <div class="pair" style="grid-template-columns:1fr 1fr"><button class="btn ghost" data-a="no:${n.id}">Исправить</button><button class="btn ghost" data-a="rej:${n.id}">Отклонить</button></div>`}
+        ${contactRow(n)}
+      </div>`;
+}
+
 function vMatches(){
-  const n = nextMatch();
   const newest = (a, b) => b.when - a.when;
-  // 1) matches to play or to settle the score — numbered; 2) my challenges nobody took yet; 3) history
+  // 1) matches to play or to settle the score — full cards, numbered; 2) my challenges nobody took yet; 3) history
   const active = db.matches.filter(m => mine(m) && (m.status === 'booked' || m.status === 'check')).sort(newest);
   const pending = db.matches.filter(m => m.a === db.me && (m.status === 'open' || m.status === 'invite')).sort(newest);
   const hist = db.matches.filter(m => mine(m) && m.status === 'done').sort(newest);
   return `
-  <div class="top"><h1>Матчи</h1>${bellBtn()}</div>
+  <div class="top"><h1>Активные матчи</h1>${bellBtn()}</div>
   <div class="split">
-    <div>
-    ${n ? `
-      <div class="match">
-        <div class="vs"><div class="p">${av(me())}<span>Вы</span></div>${n.status === 'check' ? `<span class="sc num">${scoreFor(n)}</span>` : '<span></span>'}<div class="p">${av(P(other(n)))}<span>${esc(first(P(other(n))))}</span></div></div>
-        ${n.status === 'booked' ? `
-          <p class="when">${esc(when(n.when))}<small>${esc(n.place)} · до ${need(n.bo)} побед</small></p>
-          <button class="btn main" data-a="score:${n.id}">Внести счёт</button>`
-        : n.by === db.me ? `
-          <p class="note">Ждём, когда ${esc(first(P(other(n))))} подтвердит. Если не ответит до ${esc(dueText(n))}, счёт засчитается автоматически.</p>
-          <button class="btn ghost" data-a="score:${n.id}">Изменить счёт</button>`
-        : `
-          <p class="note">${esc(first(P(n.by)))} внёс счёт. Подтвердите, исправьте или отклоните до ${esc(dueText(n))} — иначе он засчитается автоматически.</p>
-          <button class="btn main" data-a="ok:${n.id}">Да, всё верно</button>
-          <div class="pair" style="grid-template-columns:1fr 1fr;margin-top:10px"><button class="btn ghost" data-a="no:${n.id}">Исправить</button><button class="btn ghost" data-a="rej:${n.id}">Отклонить</button></div>`}
-        ${contactRow(n)}
-      </div>` : `<div class="empty"><b>Нет запланированных матчей</b>Примите вызов на главной</div>`}
+    <div class="mcards">
+      ${active.length ? active.map((m, i) => matchCard(m, i + 1)).join('') : `<div class="empty"><b>Нет активных матчей</b>Примите вызов на главной</div>`}
     </div>
     <div>
-      ${active.length ? `<div class="sec-title"><h2>Активные</h2></div><div class="list mlist">${active.map((m, i) => {
-        const o = P(other(m)), past = m.when < Date.now();
-        const st = m.status === 'check'
-          ? (m.by !== db.me ? `${first(P(m.by))} внёс счёт ${scoreFor(m)} — подтвердите до ${dueText(m)}` : `Вы внесли счёт ${scoreFor(m)} — ждём ${first(o)} до ${dueText(m)}`)
-          : past ? 'Матч прошёл — внесите счёт' : `${m.place} · до ${need(m.bo)} побед`;
-        const tone = (m.status === 'check' && m.by !== db.me) || (m.status === 'booked' && past) ? 'go' : m.status === 'booked' ? 'soon' : '';
-        return `<div class="item tap mrow${n && n.id === m.id ? ' on' : ''}" data-a="pick:${m.id}" role="button" tabindex="0"><span class="mn">${i + 1}</span>${av(o)}<div class="txt"><p class="nm">Вы — ${esc(o.name)}</p><p class="sub">${esc(when(m.when))}</p><p class="st ${tone}">${esc(st)}</p></div></div>`;
-      }).join('')}</div>` : ''}
       ${pending.length ? `<div class="sec-title"><h2>Ваши вызовы</h2></div><div class="list">${pending.map(m => {
         const o = m.b ? P(m.b) : null;
         return `<div class="item tap" data-a="ch:${m.id}" role="button" tabindex="0">${o ? av(o) : '<span class="av" style="--h:22">?</span>'}<div class="txt"><p class="nm">${o ? esc(o.name) : 'Любой игрок'}</p><p class="sub">${esc(when(m.when))} · ${o ? 'ждём ответа' : 'ждём соперника'}</p></div><span class="mst">Ждём</span></div>`;
