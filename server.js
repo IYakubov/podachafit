@@ -200,10 +200,10 @@ async function tgSetup(){
     const r = await tgCall('setWebhook', { url: `${APP_URL}/tg/${TG_HOOK}`, secret_token: TG_HOOK, allowed_updates: ['message'], drop_pending_updates: true });
     console.log('Telegram: @' + BOT_NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
   } else console.log('Telegram: @' + BOT_NAME + ' (no https APP_URL, webhook not set)');
-  await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Включить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
+  await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Открыть Подачу' }, { command: 'stop', description: 'Отключить уведомления' }] });
   if (/^https:/.test(APP_URL)) await tgCall('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Играть', web_app: { url: APP_URL } } });
-  await tgCall('setMyShortDescription', { short_description: 'Уведомления Подача FIT 🏓 Новые вызовы по настольному теннису в вашем городе и новости о ваших матчах. podacha.fit' });
-  await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак включить: откройте podacha.fit → Профиль → «Подключить бота» и нажмите «Start». Или нажмите «Играть» внизу этого чата.\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
+  await tgCall('setMyShortDescription', { short_description: 'Найди соперника по настольному теннису 🏓 Вызовы, матчи и рейтинг — прямо в Telegram. Жми «Играть»' });
+  await tgCall('setMyDescription', { description: '🏓 Подача FIT — соперник по настольному теннису прямо в Telegram.\n\nНажмите «Играть» внизу чата:\n• бросьте вызов любому игроку в городе или кому-то лично\n• примите чужой вызов — вы обменяетесь контактами\n• после игры внесите счёт — соперник подтвердит\n• поднимайтесь в рейтинге\n\nЯ пришлю новые вызовы в вашем городе, принятые матчи и счета на подтверждение.\n\nНужны только никнейм и город — без имени и телефона. Бесплатно.' });
 }
 
 /* ---------------- sessions: signed cookie, no session table ---------------- */
@@ -397,7 +397,7 @@ app.post('/api/tg/webapp/link', wrap(async (req, res) => {
   await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1 AND id<>$2', [tu.id, u.id]);
   const already = u.tg_chat && +u.tg_chat === tu.id;
   await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1', [u.id, tu.id]);
-  if (!already) tgLater(() => tgSend(tu.id, `Готово, <b>${h(u.nick)}</b>! 🏓 Теперь вы входите в Подачу прямо из Telegram, а я пришлю новые вызовы в городе ${h(u.city)} и новости о ваших матчах.`));
+  if (!already) tgLater(() => tgSend(tu.id, `Готово, <b>${h(u.nick)}</b>! 🏓 Теперь Подача всегда под рукой: кнопка «Играть» внизу чата. Я пришлю новые вызовы в городе ${h(u.city)} и новости о ваших матчах.`));
   res.json({ ok: true });
 }));
 
@@ -433,19 +433,19 @@ app.post('/tg/:hook', wrap(async (req, res) => {
   const chat = msg.chat.id, text = msg.text.trim();
   if (/^\/stop/.test(text)){
     await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
-    return tgSend(chat, 'Уведомления отключены. Включить снова можно в профиле на сайте.');
+    return tgSend(chat, 'Уведомления отключены. Играть можно как раньше — кнопка «Играть» внизу чата. Включить уведомления снова: «Играть» → Профиль → «Подключить бота».', 'Играть');
   }
   const code = (text.match(/^\/start\s+([A-Za-z0-9_-]{8,64})$/) || [])[1];
   if (!code){
     const linked = (await q('SELECT nick FROM users WHERE tg_chat=$1', [chat])).rows[0];
-    return tgSend(chat, linked ? `Вы подключены как <b>${h(linked.nick)}</b>. Я пришлю новые вызовы в вашем городе и новости о ваших матчах.\n/stop — отключить.`
-      : 'Привет! Это бот Подачи 🏓 Нажмите «Открыть Подачу» и войдите один раз — после этого я буду присылать вызовы и новости о ваших матчах.', 'Открыть Подачу');
+    return tgSend(chat, linked ? `С возвращением, <b>${h(linked.nick)}</b>! 🏓\nНажмите «Играть», чтобы открыть вызовы и матчи. Я пришлю новые вызовы в вашем городе и новости о ваших матчах.\n\n/stop — отключить уведомления.`
+      : 'Привет! Это Подача FIT 🏓\nЗдесь можно найти соперника по настольному теннису, бросить вызов и следить за рейтингом.\n\nНажмите «Играть» внизу чата. Войти нужно один раз — дальше всё прямо в Telegram, а я буду присылать вызовы и новости о ваших матчах.', 'Играть');
   }
   const link = (await q(`DELETE FROM tg_links WHERE code=$1 AND expires_at > now() RETURNING user_id`, [code])).rows[0];
-  if (!link) return tgSend(chat, 'Ссылка устарела. Нажмите «Подключить бота» в профиле ещё раз.', 'Открыть Подачу');
+  if (!link) return tgSend(chat, 'Ссылка устарела. Просто нажмите «Играть» внизу чата — и войдите в Подачу прямо здесь.', 'Играть');
   await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
   const u = (await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1 RETURNING nick, city', [link.user_id, chat])).rows[0];
-  tgSend(chat, `Готово, <b>${h(u.nick)}</b>! 🏓\nЯ пришлю:\n• новые вызовы в городе ${h(u.city)}\n• вызовы вам, принятые матчи и счета\n\nНастроить или отключить — в профиле на сайте или командой /stop.`, 'Открыть Подачу');
+  tgSend(chat, `Готово, <b>${h(u.nick)}</b>! 🏓\nТеперь всё прямо в Telegram — нажмите «Играть» внизу чата.\n\nЯ пришлю:\n• новые вызовы в городе ${h(u.city)}\n• вызовы вам, принятые матчи и счета\n\n/stop — отключить уведомления.`, 'Играть');
 }));
 
 /* ---- everything the app shows, in one request ---- */
