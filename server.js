@@ -195,10 +195,10 @@ async function tgSetup(){
     const r = await tgCall('setWebhook', { url: `${APP_URL}/tg/${TG_HOOK}`, secret_token: TG_HOOK, allowed_updates: ['message'], drop_pending_updates: true });
     console.log('Telegram: @' + BOT_NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
   } else console.log('Telegram: @' + BOT_NAME + ' (no https APP_URL, webhook not set)');
-  await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Подключить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
+  await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Включить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
   if (/^https:/.test(APP_URL)) await tgCall('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Играть', web_app: { url: APP_URL } } });
   await tgCall('setMyShortDescription', { short_description: 'Уведомления Подача FIT 🏓 Новые вызовы по настольному теннису в вашем городе и новости о ваших матчах. podacha.fit' });
-  await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак подключить: откройте podacha.fit → Профиль → «Подключить Telegram» и нажмите «Start».\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
+  await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак включить: откройте podacha.fit → Профиль → «Открыть бота Подачи» и нажмите «Start». Или нажмите «Играть» внизу этого чата.\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
 }
 
 /* ---------------- sessions: signed cookie, no session table ---------------- */
@@ -413,7 +413,7 @@ app.post('/api/tg/prefs', wrap(async (req, res) => {
 }));
 app.post('/api/tg/unlink', wrap(async (req, res) => {
   const u = await must(req);
-  if (u.tg_chat) tgLater(() => tgSend(u.tg_chat, 'Уведомления отключены. Подключить снова можно в профиле на сайте.'));
+  if (u.tg_chat) tgLater(() => tgSend(u.tg_chat, 'Уведомления отключены. Включить снова можно в профиле на сайте.'));
   await q('UPDATE users SET tg_chat=NULL WHERE id=$1', [u.id]);
   res.json({ ok: true });
 }));
@@ -425,16 +425,16 @@ app.post('/tg/:hook', wrap(async (req, res) => {
   const chat = msg.chat.id, text = msg.text.trim();
   if (/^\/stop/.test(text)){
     await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
-    return tgSend(chat, 'Уведомления отключены. Подключить снова можно в профиле на сайте.');
+    return tgSend(chat, 'Уведомления отключены. Включить снова можно в профиле на сайте.');
   }
   const code = (text.match(/^\/start\s+([A-Za-z0-9_-]{8,64})$/) || [])[1];
   if (!code){
     const linked = (await q('SELECT nick FROM users WHERE tg_chat=$1', [chat])).rows[0];
     return tgSend(chat, linked ? `Вы подключены как <b>${h(linked.nick)}</b>. Я пришлю новые вызовы в вашем городе и новости о ваших матчах.\n/stop — отключить.`
-      : 'Привет! Чтобы получать уведомления, откройте сайт → Профиль → «Подключить Telegram».', 'Открыть Подачу');
+      : 'Привет! Это бот Подачи 🏓 Нажмите «Открыть Подачу» и войдите один раз — после этого я буду присылать вызовы и новости о ваших матчах.', 'Открыть Подачу');
   }
   const link = (await q(`DELETE FROM tg_links WHERE code=$1 AND expires_at > now() RETURNING user_id`, [code])).rows[0];
-  if (!link) return tgSend(chat, 'Ссылка устарела. Нажмите «Подключить Telegram» в профиле ещё раз.', 'Открыть Подачу');
+  if (!link) return tgSend(chat, 'Ссылка устарела. Нажмите «Открыть бота Подачи» в профиле ещё раз.', 'Открыть Подачу');
   await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
   const u = (await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1 RETURNING nick, city', [link.user_id, chat])).rows[0];
   tgSend(chat, `Готово, <b>${h(u.nick)}</b>! 🏓\nЯ пришлю:\n• новые вызовы в городе ${h(u.city)}\n• вызовы вам, принятые матчи и счета\n\nНастроить или отключить — в профиле на сайте или командой /stop.`, 'Открыть Подачу');

@@ -929,21 +929,22 @@ function openAbout(){
 function openNudge(){
   sheet(`<div class="nudge">
       <span class="ic">${I.tg}</span>
-      <h2>Не пропускайте вызовы</h2>
-      <p>Подключите Telegram — бот сразу сообщит, когда в вашем городе кто-то ищет соперника, примет ваш вызов или внесёт счёт.</p>
+      <h2>Вызовы — в нашем боте</h2>
+      <p>Бот Подачи <b>@${esc((S.tg && S.tg.bot) || 'podachafitbot')}</b> напишет, когда в вашем городе кто-то ищет соперника, примет ваш вызов или внесёт счёт.</p>
+      <p class="fine">Бот никогда не спрашивает пароль, телефон или коды.</p>
     </div>
-    <button class="btn tg" data-a="nudge-go">Подключить Telegram</button>
+    <button class="btn tg" data-a="nudge-go">Открыть бота Подачи</button>
     <button class="btn link" data-a="nudge-later" style="color:var(--muted)">Позже</button>`);
 }
 function tgLink(el){
-  if (tgInitData()){ if (el) el.disabled = true; return tgAutoLink().then(() => { S.tg = Object.assign({}, S.tg, { linked: true }); paintTg(); toast('Telegram подключён'); tgHaptic('ok'); }); }
+  if (tgInitData()){ if (el) el.disabled = true; return tgAutoLink().then(() => { S.tg = Object.assign({}, S.tg, { linked: true }); paintTg(); toast('Бот Подачи включён'); tgHaptic('ok'); }); }
   if (el) el.disabled = true;
   return api('/api/tg/link', {}).then(r => {
     S.tg.pending = true; paintTg();
     const w = window.open(r.url, '_blank'); if (!w) location.href = r.url;
     let n = 0; const iv = setInterval(() => {
       if (++n > 60){ clearInterval(iv); return; }
-      api('/api/tg').then(x => { if (x.linked){ clearInterval(iv); S.tg = x; paintTg(); toast('Telegram подключён'); } }).catch(() => {});
+      api('/api/tg').then(x => { if (x.linked){ clearInterval(iv); S.tg = x; paintTg(); toast('Бот Подачи включён'); } }).catch(() => {});
     }, 3000);
   }).catch(ex => { toast(ex.message); if (el) el.disabled = false; });
 }
@@ -957,9 +958,9 @@ function paintTg(){
   if (!t || !t.available){ box.innerHTML = ''; return; }
   const sw = (key, on, label) => `<div class="tg-row"><span>${label}</span><button class="sw" role="switch" aria-checked="${on}" aria-label="${label}" data-a="tgsw:${key}"></button></div>`;
   box.innerHTML = `<div class="tg-card">
-    <div class="tg-head"><span class="ic">${I.tg}</span><div><b>Уведомления в Telegram</b><span>${t.linked ? 'Подключено · @' + esc(t.bot) : t.pending ? 'Нажмите «Start» в боте и вернитесь сюда' : 'Новые вызовы в вашем городе и ваши матчи'}</span></div></div>
-    ${t.linked ? sw('city', t.city, 'Новые вызовы в моём городе') + sw('mine', t.mine, 'Мои вызовы и матчи') + `<button class="btn link" data-a="tg-off" style="min-height:36px">Отключить Telegram</button>`
-      : `<button class="btn tg" data-a="tg-link">${t.pending ? 'Открыть бота ещё раз' : 'Подключить Telegram'}</button>`}
+    <div class="tg-head"><span class="ic">${I.tg}</span><div><b>Бот Подачи в Telegram</b><span>${t.linked ? 'Включён · @' + esc(t.bot) : t.pending ? 'Нажмите «Start» в боте и вернитесь сюда' : '@' + esc(t.bot) + ' присылает вызовы и новости о матчах'}</span></div></div>
+    ${t.linked ? sw('city', t.city, 'Новые вызовы в моём городе') + sw('mine', t.mine, 'Мои вызовы и матчи') + `<button class="btn link" data-a="tg-off" style="min-height:36px">Отключить бота</button>`
+      : `<button class="btn tg" data-a="tg-link">${t.pending ? 'Открыть бота ещё раз' : 'Открыть бота Подачи'}</button>`}
   </div>`;
 }
 
@@ -1208,7 +1209,7 @@ document.addEventListener('click', e => {
     case 'nudge-go': nudgeSeen(); close(); tgLink(null); break;
     case 'nudge-later': nudgeSeen(); close(); break;
     case 'tgsw': { S.tg[b] = !S.tg[b]; paintTg(); api('/api/tg/prefs', { city: S.tg.city, mine: S.tg.mine }).catch(ex => { S.tg[b] = !S.tg[b]; paintTg(); toast(ex.message); }); break; }
-    case 'tg-off': api('/api/tg/unlink', {}).then(() => { S.tg.linked = false; S.tg.pending = false; paintTg(); toast('Telegram отключён'); }).catch(ex => toast(ex.message)); break;
+    case 'tg-off': api('/api/tg/unlink', {}).then(() => { S.tg.linked = false; S.tg.pending = false; paintTg(); toast('Бот отключён'); }).catch(ex => toast(ex.message)); break;
     case 'note': close(); S.notesShown = null; S.view = b; render(); break;
     case 'perm': try { Notification.requestPermission().then(() => drawNotes()); } catch(e){} break;
     case 'rules': openRules(); break;
