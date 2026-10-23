@@ -100,6 +100,7 @@ async function migrate(){
     CREATE INDEX IF NOT EXISTS matches_a_idx ON matches(a);
     CREATE INDEX IF NOT EXISTS matches_b_idx ON matches(b);
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS delta_l int;
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS reported_at timestamptz;
     CREATE TABLE IF NOT EXISTS notifications (
       id bigserial PRIMARY KEY,
       user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -123,6 +124,8 @@ async function migrate(){
 }
 
 /* ---------------- in-app notifications ---------------- */
+/* a reported score counts automatically if the opponent does not confirm, correct or reject it within a day */
+const SCORE_WAIT_MS = 24 * 3600e3;
 async function notify(db, userId, kind, matchId, actor){
   if (!userId || userId === actor) return;
   await db.query('INSERT INTO notifications (user_id, kind, match_id, actor) VALUES ($1,$2,$3,$4)', [userId, kind, matchId, actor || null]);
@@ -173,9 +176,11 @@ async function tgPersonal(userId, kind, matchId, actorId){
     accepted: m && `✅ ${who} принял(а) ваш вызов\n${h(whenRu(m.when_at))} · ${h(m.place)}\nКонтакт соперника — в приложении.`,
     declined: `❌ ${who} отклонил(а) ваш вызов`,
     cancelled: m && `❌ ${who} отменил(а) матч ${h(whenRu(m.when_at))}`,
-    score: m && `📝 ${who} внёс счёт <b>${sc}</b>. Подтвердите, если всё верно.`,
+    score: m && `📝 ${who} внёс счёт <b>${sc}</b>.\nПодтвердите, исправьте или отклоните его в приложении. Если не ответить за сутки, счёт засчитается автоматически.`,
+    corrected: m && `✏️ ${who} исправил(а) счёт на <b>${sc}</b>.\nПодтвердите, исправьте или отклоните. Через сутки без ответа этот счёт засчитается.`,
+    rejected: m && `↩️ ${who} отклонил(а) счёт. Внесите правильный счёт в приложении.`,
     confirmed: m && (m.winner === userId ? `🏆 ${who} подтвердил(а) счёт ${sc}. Победа! <b>+${m.delta}</b> к рейтингу` : `${who} подтвердил(а) счёт ${sc}. <b>−${m.delta_l ?? m.delta}</b> к рейтингу`),
-    auto: m && `Счёт ${sc} засчитан автоматически: соперник не ответил 3 дня.`
+    auto: m && `Счёт ${sc} засчитан автоматически: соперник не ответил за сутки.`
   }[kind];
   if (txt) await tgSend(u.tg_chat, txt, 'Открыть Подачу');
 }
@@ -268,7 +273,8 @@ function matchOut(m, me){
     id: m.id, a: m.a, b: m.b, status: m.status, bo: m.bo, when: new Date(m.when_at).getTime(), place: m.place,
     ca: showContacts || (mine && m.a === me) ? m.ca : undefined,
     cb: showContacts || (mine && m.b === me) ? m.cb : undefined,
-    sa: m.sa, sb: m.sb, by: m.reported_by, winner: m.winner, d: m.delta, dl: m.delta_l == null ? m.delta : m.delta_l
+    sa: m.sa, sb: m.sb, by: m.reported_by, winner: m.winner, d: m.delta, dl: m.delta_l == null ? m.delta : m.delta_l,
+    due: m.status === 'check' ? new Date(m.reported_at || m.updated_at).getTime() + SCORE_WAIT_MS : undefined
   };
 }
 
@@ -527,8 +533,10 @@ app.post('/api/challenges/:id/score', wrap(async (req, res) => {
     if (!['booked', 'check'].includes(m.status)) bad('Счёт для этого матча уже нельзя изменить');
     if (!okScore(m.bo, mine, theirs)) bad(`Победитель набирает ${need(m.bo)}`);
     const [sa, sb] = m.a === u.id ? [mine, theirs] : [theirs, mine];
-    await db.query(`UPDATE matches SET sa=$2, sb=$3, reported_by=$4, status='check', updated_at=now() WHERE id=$1`, [m.id, sa, sb, u.id]);
-    await notify(db, m.a === u.id ? m.b : m.a, 'score', m.id, u.id);
+    // the opponent correcting a reported score: now the first reporter has a day to answer
+    const corrected = m.status === 'check' && m.reported_by && m.reported_by !== u.id;
+    await db.query(`UPDATE matches SET sa=$2, sb=$3, reported_by=$4, status='check', reported_at=now(), updated_at=now() WHERE id=$1`, [m.id, sa, sb, u.id]);
+    await notify(db, m.a === u.id ? m.b : m.a, corrected ? 'corrected' : 'score', m.id, u.id);
   });
   res.json({ ok: true });
 }));
@@ -558,16 +566,29 @@ app.post('/api/challenges/:id/confirm', wrap(async (req, res) => {
   res.json({ ok: true, won: out.winner === u.id, gain: out.gain, loss: out.loss });
 }));
 
+app.post('/api/challenges/:id/reject', wrap(async (req, res) => {
+  const u = await must(req);
+  await inTx(async db => {
+    const m = await lockMatch(db, req.params.id);
+    if (m.a !== u.id && m.b !== u.id) bad('Это не ваш матч', 403);
+    if (m.status !== 'check' || m.reported_by === u.id) bad('Нечего отклонять');
+    // back to "played, no score yet": either player can enter the right score
+    await db.query(`UPDATE matches SET sa=NULL, sb=NULL, reported_by=NULL, reported_at=NULL, status='booked', updated_at=now() WHERE id=$1`, [m.id]);
+    await notify(db, m.reported_by, 'rejected', m.id, u.id);
+  });
+  res.json({ ok: true });
+}));
+
 /* ---- housekeeping: expire stale matches and wipe their contacts ---- */
 async function housekeeping(){
   try {
     await q(`DELETE FROM notifications WHERE created_at < now() - interval '30 days'`);
     await q(`DELETE FROM tg_links WHERE expires_at < now()`);
-    // challenges nobody played: cancelled 3 days after the planned time
+    // challenges nobody played: cancelled 3 days after the planned time (a just-rejected score gets 2 more days)
     await q(`UPDATE matches SET status='cancelled', ca=NULL, cb=NULL, updated_at=now()
-             WHERE status IN ('open','invite','booked') AND when_at < now() - interval '3 days'`);
-    // a reported score the opponent ignored for 3 days counts as confirmed
-    const stale = (await q(`SELECT id FROM matches WHERE status='check' AND updated_at < now() - interval '3 days'`)).rows;
+             WHERE status IN ('open','invite','booked') AND when_at < now() - interval '3 days' AND updated_at < now() - interval '2 days'`);
+    // a reported score the opponent did not confirm, correct or reject within a day counts as confirmed
+    const stale = (await q(`SELECT id FROM matches WHERE status='check' AND COALESCE(reported_at, updated_at) < now() - $1::int * interval '1 millisecond'`, [SCORE_WAIT_MS])).rows;
     for (const { id } of stale) await inTx(async db => { const m = await lockMatch(db, id); if (m.status === 'check') await finish(db, m, null); });
   } catch (e) { console.error('housekeeping:', e.message); }
 }
@@ -581,7 +602,7 @@ app.get('*', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'pu
 
 (async () => {
   for (let i = 0; i < 10; i++){ try { await migrate(); break; } catch (e) { console.error('DB not ready:', e.message); await new Promise(r => setTimeout(r, 3000)); if (i === 9) process.exit(1); } }
-  housekeeping(); setInterval(housekeeping, 60 * 60e3);
+  housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   app.listen(PORT, () => console.log(`podacha.fit listening on ${PORT}`));
 })();

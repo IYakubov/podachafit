@@ -599,12 +599,14 @@ function noteText(n){
     case 'accepted': return { t: `${who} принял(а) ваш вызов`, s: m ? `${when(m.when)} · контакты открыты` : 'Контакты открыты', go: 'matches' };
     case 'declined': return { t: `${who} отклонил(а) вызов`, s: 'Попробуйте бросить вызов кому-то ещё', go: 'home' };
     case 'cancelled': return { t: `${who} отменил(а) матч`, s: m ? when(m.when) : '', go: 'matches' };
-    case 'score': return { t: `${who} внёс счёт ${m && m.sa != null ? scoreFor(m) : ''}`.trim(), s: 'Подтвердите, если всё верно', go: 'matches' };
+    case 'score': return { t: `${who} внёс счёт ${m && m.sa != null && m.status === 'check' ? scoreFor(m) : ''}`.trim(), s: 'Подтвердите, исправьте или отклоните за сутки', go: 'matches' };
+    case 'corrected': return { t: `${who} исправил(а) счёт ${m && m.sa != null && m.status === 'check' ? 'на ' + scoreFor(m) : ''}`.trim(), s: 'Ответьте за сутки, иначе он засчитается', go: 'matches' };
+    case 'rejected': return { t: `${who} отклонил(а) счёт`, s: 'Внесите правильный счёт', go: 'matches' };
     case 'confirmed': {
       const won = m && m.winner === db.me, d = m ? (won ? m.d : m.dl) : null;
       return { t: `${who} подтвердил(а) счёт`, s: m ? (won ? `Победа ${scoreFor(m)} · +${d} к рейтингу` : `Поражение ${scoreFor(m)} · −${d}`) : 'Рейтинг обновлён', go: 'me' };
     }
-    case 'auto': return { t: 'Счёт засчитан автоматически', s: 'Соперник не ответил 3 дня', go: 'me' };
+    case 'auto': return { t: 'Счёт засчитан автоматически', s: 'Соперник не ответил за сутки', go: 'me' };
   }
   return { t: 'Обновление', s: '', go: 'home' };
 }
@@ -783,11 +785,12 @@ function vMatches(){
           <p class="when">${esc(when(n.when))}<small>${esc(n.place)} · до ${need(n.bo)} побед</small></p>
           <button class="btn main" data-a="score:${n.id}">Внести счёт</button>`
         : n.by === db.me ? `
-          <p class="note">Ждём, когда ${esc(first(P(other(n))))} подтвердит. До этого рейтинг не меняется.</p>
+          <p class="note">Ждём, когда ${esc(first(P(other(n))))} подтвердит. Если не ответит до ${esc(dueText(n))}, счёт засчитается автоматически.</p>
           <button class="btn ghost" data-a="score:${n.id}">Изменить счёт</button>`
         : `
-          <p class="note">${esc(first(P(n.by)))} внёс счёт. Он засчитается, только если вы подтвердите.</p>
-          <div class="pair"><button class="btn ghost" data-a="no:${n.id}">Нет</button><button class="btn main" data-a="ok:${n.id}">Да, верно</button></div>`}
+          <p class="note">${esc(first(P(n.by)))} внёс счёт. Подтвердите, исправьте или отклоните до ${esc(dueText(n))} — иначе он засчитается автоматически.</p>
+          <button class="btn main" data-a="ok:${n.id}">Да, всё верно</button>
+          <div class="pair" style="grid-template-columns:1fr 1fr;margin-top:10px"><button class="btn ghost" data-a="no:${n.id}">Исправить</button><button class="btn ghost" data-a="rej:${n.id}">Отклонить</button></div>`}
         ${contactRow(n)}
       </div>` : `<div class="empty"><b>Нет запланированных матчей</b>Примите вызов на главной</div>`}
     </div>
@@ -1057,6 +1060,12 @@ function drawAva(){
     <button class="btn main" data-a="ava-save">Сохранить</button>`);
 }
 function keepNew(){ C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
+function dueText(m){
+  if (!m.due) return 'завтра';
+  const d = new Date(m.due), now = new Date();
+  const day = d.toDateString() === now.toDateString() ? 'сегодня' : (new Date(now.getTime() + 864e5).toDateString() === d.toDateString() ? 'завтра' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }));
+  return `${day}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
 function openScore(mid, title = 'Какой счёт?'){
   const m = db.matches.find(x => x.id === mid);
   C = { mid, bo: m.bo, x: 0, y: 0 };
@@ -1067,7 +1076,7 @@ function openScore(mid, title = 'Какой счёт?'){
       <div class="p">${av(P(other(m)))}<span>${esc(first(P(other(m))))}</span><div class="step"><button data-a="sc:y:1" aria-label="Плюс">+</button><b id="sy">0</b><button data-a="sc:y:-1" aria-label="Минус">−</button></div></div>
     </div>
     <p class="hint" id="s-hint"></p>
-    <p class="hint" style="font-size:.9rem;font-weight:600">${esc(first(P(other(m))))} должен подтвердить счёт. Только после этого он засчитается.</p>
+    <p class="hint" style="font-size:.9rem;font-weight:600">${esc(first(P(other(m))))} может подтвердить, исправить или отклонить счёт. Если за сутки ответа не будет, он засчитается автоматически.</p>
     <button class="btn main" data-a="save-score" id="s-btn">Отправить на подтверждение</button>`);
   drawScore();
 }
@@ -1181,6 +1190,7 @@ document.addEventListener('click', e => {
     }
     case 'ok': el.disabled = true; act(`/api/challenges/${b}/confirm`, {}, r => r.won ? `Победа! +${r.gain} к рейтингу` : `Засчитано. −${r.loss} к рейтингу`).catch(() => { el.disabled = false; }); break;
     case 'no': openScore(b, 'Какой был счёт?'); break;
+    case 'rej': el.disabled = true; act(`/api/challenges/${b}/reject`, {}, 'Счёт отклонён. Можно внести правильный').catch(() => { el.disabled = false; }); break;
     case 'rk': S.rankAll = b === 'all'; render(); break;
     case 'notes': openNotes(); break;
     case 'edit-prof': openEdit(); break;
