@@ -10,7 +10,8 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
 - **Challenges:** open to anyone or sent to a specific player, with a day, time, place and format (to 2 or 3 wins).
 - **Contacts:** whoever creates or accepts a challenge enters a Telegram username or phone number. Only the opponent sees it, only after the challenge is accepted, and it is deleted when the match is finished, cancelled or expires.
 - **Scores:** one player enters the score and the other confirms it. Ratings change only after confirmation. A score left unconfirmed for 3 days counts as confirmed.
-- **Rating:** Elo, everyone starts at 1000, K = 32. Calculated on the server only.
+- **Rating:** Elo-based (like German TTR and US USATT), calculated on the server only. Everyone starts at 1000 internally but is shown as "Новичок" until the first confirmed match. The winner gains the full Elo amount and the loser loses half (as in the Russian amateur RTTF rating). K = 48 for a player's first 10 matches, then 32. A convincing win counts more: 3:0 ×1.2, 3:1 ×1.07, 3:2 ×0.93.
+- **Notifications:** in-app notifications (bell with a counter) when someone challenges you, accepts or declines your challenge, cancels a match, enters a score, or confirms it. Optional browser notifications while the site is open in a tab.
 - **Housekeeping:** challenges nobody played are cancelled 3 days after their planned time, and their contacts are wiped.
 
 ## Privacy

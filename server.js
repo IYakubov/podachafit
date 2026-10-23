@@ -34,7 +34,22 @@ const NICK_RE = /^[A-Za-zА-Яа-яЁё0-9_]{3,16}$/;
 const RESERVED = ['admin','administrator','rally','podacha','podachafit','support','moderator','админ','модератор','поддержка'];
 const need = bo => Math.floor(bo / 2) + 1;
 const okScore = (bo, a, b) => { const n = need(bo); return (a === n && b >= 0 && b < n) || (b === n && a >= 0 && a < n); };
-const elo = (w, l) => Math.max(1, Math.round(32 * (1 - 1 / (1 + Math.pow(10, (l - w) / 400)))));
+/*
+ * Rating change (Elo-based, like German TTR / US USATT, with the RTTF habit that the loser
+ * loses half of what a full Elo exchange would take):
+ *  - expected score from the rating gap (400-point logistic, as in chess)
+ *  - K = 48 for a player's first 10 matches (rating settles fast), then 32
+ *  - a convincing win counts a little more: 3:0 ×1.2, 3:1 ×1.07, 3:2 ×0.93 (2:0 ×1.2, 2:1 ×1.0)
+ *  - the winner gains the full amount, the loser loses half
+ */
+const kFor = played => played < 10 ? 48 : 32;
+function ratingChange(w, l, gw, gl, bo){
+  const ew = 1 / (1 + Math.pow(10, (l.rating - w.rating) / 400));
+  const mult = 0.8 + 0.4 * ((gw - gl) / need(bo));
+  const gain = Math.max(1, Math.round(kFor(w.wins + w.losses) * (1 - ew) * mult));
+  const loss = Math.max(1, Math.round(kFor(l.wins + l.losses) * (1 - ew) * mult / 2));
+  return { gain, loss };
+}
 const hasContactInText = t => /(https?:|www\.|t\.me|@[A-Za-z0-9_]{3,}|\d[\d\s\-()]{5,}\d)/i.test(t);
 function normContact(type, v){
   v = String(v || '').trim();
@@ -82,7 +97,24 @@ async function migrate(){
     CREATE INDEX IF NOT EXISTS matches_status_idx ON matches(status);
     CREATE INDEX IF NOT EXISTS matches_a_idx ON matches(a);
     CREATE INDEX IF NOT EXISTS matches_b_idx ON matches(b);
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS delta_l int;
+    CREATE TABLE IF NOT EXISTS notifications (
+      id bigserial PRIMARY KEY,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind text NOT NULL,
+      match_id uuid REFERENCES matches(id) ON DELETE CASCADE,
+      actor uuid REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      read_at timestamptz
+    );
+    CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, created_at DESC);
   `);
+}
+
+/* ---------------- in-app notifications ---------------- */
+async function notify(db, userId, kind, matchId, actor){
+  if (!userId || userId === actor) return;
+  await db.query('INSERT INTO notifications (user_id, kind, match_id, actor) VALUES ($1,$2,$3,$4)', [userId, kind, matchId, actor || null]);
 }
 
 /* ---------------- sessions: signed cookie, no session table ---------------- */
@@ -141,7 +173,7 @@ function matchOut(m, me){
     id: m.id, a: m.a, b: m.b, status: m.status, bo: m.bo, when: new Date(m.when_at).getTime(), place: m.place,
     ca: showContacts || (mine && m.a === me) ? m.ca : undefined,
     cb: showContacts || (mine && m.b === me) ? m.cb : undefined,
-    sa: m.sa, sb: m.sb, by: m.reported_by, winner: m.winner, d: m.delta
+    sa: m.sa, sb: m.sb, by: m.reported_by, winner: m.winner, d: m.delta, dl: m.delta_l == null ? m.delta : m.delta_l
   };
 }
 
@@ -202,7 +234,16 @@ app.get('/api/state', wrap(async (req, res) => {
       WHERE (status = 'open' AND when_at > now() - interval '3 hours')
          OR ((a = $1 OR b = $1) AND (status <> 'done' OR updated_at > now() - interval '120 days'))
       ORDER BY when_at DESC LIMIT 500`, [u.id])).rows;
-  res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)) });
+  const notes = (await q(`SELECT id, kind, match_id, actor, created_at, read_at FROM notifications
+      WHERE user_id = $1 AND created_at > now() - interval '30 days' ORDER BY created_at DESC LIMIT 40`, [u.id])).rows
+    .map(n => ({ id: +n.id, kind: n.kind, match: n.match_id, actor: n.actor, at: new Date(n.created_at).getTime(), read: !!n.read_at }));
+  res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)), notes });
+}));
+
+app.post('/api/notifications/read', wrap(async (req, res) => {
+  const u = await must(req);
+  await q('UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL', [u.id]);
+  res.json({ ok: true });
 }));
 
 /* ---- challenges ---- */
@@ -223,8 +264,9 @@ app.post('/api/challenges', wrap(async (req, res) => {
   }
   const waiting = (await q(`SELECT count(*)::int n FROM matches WHERE a=$1 AND status IN ('open','invite')`, [u.id])).rows[0].n;
   if (waiting >= 10) bad('У вас уже 10 ожидающих вызовов. Отмените один из них');
-  await q(`INSERT INTO matches (a, b, status, bo, when_at, place, ca) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+  const r = await q(`INSERT INTO matches (a, b, status, bo, when_at, place, ca) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
     [u.id, who || null, who ? 'invite' : 'open', +bo, t, place, c]);
+  if (who) await notify(pool, who, 'invite', r.rows[0].id, u.id);
   res.json({ ok: true });
 }));
 
@@ -240,6 +282,7 @@ app.post('/api/challenges/:id/accept', wrap(async (req, res) => {
     const ok = (m.status === 'open' && m.a !== u.id) || (m.status === 'invite' && m.b === u.id);
     if (!ok) bad('Этот вызов уже неактуален');
     await db.query(`UPDATE matches SET b=$2, cb=$3, status='booked', updated_at=now() WHERE id=$1`, [m.id, u.id, c]);
+    await notify(db, m.a, 'accepted', m.id, u.id);
   });
   res.json({ ok: true });
 }));
@@ -251,6 +294,7 @@ app.post('/api/challenges/:id/cancel', wrap(async (req, res) => {
     const ok = (m.a === u.id && ['open', 'invite', 'booked'].includes(m.status)) || (m.b === u.id && ['invite', 'booked'].includes(m.status));
     if (!ok) bad('Этот матч нельзя отменить');
     await db.query(`UPDATE matches SET status='cancelled', ca=NULL, cb=NULL, updated_at=now() WHERE id=$1`, [m.id]);
+    await notify(db, m.a === u.id ? m.b : m.a, m.status === 'invite' && m.b === u.id ? 'declined' : 'cancelled', m.id, u.id);
   });
   res.json({ ok: true });
 }));
@@ -265,19 +309,23 @@ app.post('/api/challenges/:id/score', wrap(async (req, res) => {
     if (!okScore(m.bo, mine, theirs)) bad(`Победитель набирает ${need(m.bo)}`);
     const [sa, sb] = m.a === u.id ? [mine, theirs] : [theirs, mine];
     await db.query(`UPDATE matches SET sa=$2, sb=$3, reported_by=$4, status='check', updated_at=now() WHERE id=$1`, [m.id, sa, sb, u.id]);
+    await notify(db, m.a === u.id ? m.b : m.a, 'score', m.id, u.id);
   });
   res.json({ ok: true });
 }));
 
-async function finish(db, m){
+async function finish(db, m, confirmer){
   const wid = m.sa > m.sb ? m.a : m.b, lid = wid === m.a ? m.b : m.a;
-  const rows = (await db.query('SELECT id, rating FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[wid, lid]])).rows;
+  const rows = (await db.query('SELECT id, rating, wins, losses FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[wid, lid]])).rows;
   const w = rows.find(r => r.id === wid), l = rows.find(r => r.id === lid);
-  const d = elo(w.rating, l.rating);
-  await db.query('UPDATE users SET rating=rating+$2, wins=wins+1 WHERE id=$1', [wid, d]);
-  await db.query('UPDATE users SET rating=rating-$2, losses=losses+1 WHERE id=$1', [lid, d]);
-  await db.query(`UPDATE matches SET status='done', winner=$2, delta=$3, ca=NULL, cb=NULL, updated_at=now() WHERE id=$1`, [m.id, wid, d]);
-  return { winner: wid, d };
+  const gw = Math.max(m.sa, m.sb), gl = Math.min(m.sa, m.sb);
+  const { gain, loss } = ratingChange(w, l, gw, gl, m.bo);
+  await db.query('UPDATE users SET rating=rating+$2, wins=wins+1 WHERE id=$1', [wid, gain]);
+  await db.query('UPDATE users SET rating=rating-$2, losses=losses+1 WHERE id=$1', [lid, loss]);
+  await db.query(`UPDATE matches SET status='done', winner=$2, delta=$3, delta_l=$4, ca=NULL, cb=NULL, updated_at=now() WHERE id=$1`, [m.id, wid, gain, loss]);
+  if (confirmer) await notify(db, m.reported_by, 'confirmed', m.id, confirmer);
+  else { await notify(db, m.a, 'auto', m.id, null); await notify(db, m.b, 'auto', m.id, null); }
+  return { winner: wid, gain, loss };
 }
 
 app.post('/api/challenges/:id/confirm', wrap(async (req, res) => {
@@ -286,20 +334,21 @@ app.post('/api/challenges/:id/confirm', wrap(async (req, res) => {
     const m = await lockMatch(db, req.params.id);
     if (m.a !== u.id && m.b !== u.id) bad('Это не ваш матч', 403);
     if (m.status !== 'check' || m.reported_by === u.id) bad('Нечего подтверждать');
-    return finish(db, m);
+    return finish(db, m, u.id);
   });
-  res.json({ ok: true, won: out.winner === u.id, d: out.d });
+  res.json({ ok: true, won: out.winner === u.id, gain: out.gain, loss: out.loss });
 }));
 
 /* ---- housekeeping: expire stale matches and wipe their contacts ---- */
 async function housekeeping(){
   try {
+    await q(`DELETE FROM notifications WHERE created_at < now() - interval '30 days'`);
     // challenges nobody played: cancelled 3 days after the planned time
     await q(`UPDATE matches SET status='cancelled', ca=NULL, cb=NULL, updated_at=now()
              WHERE status IN ('open','invite','booked') AND when_at < now() - interval '3 days'`);
     // a reported score the opponent ignored for 3 days counts as confirmed
     const stale = (await q(`SELECT id FROM matches WHERE status='check' AND updated_at < now() - interval '3 days'`)).rows;
-    for (const { id } of stale) await inTx(async db => { const m = await lockMatch(db, id); if (m.status === 'check') await finish(db, m); });
+    for (const { id } of stale) await inTx(async db => { const m = await lockMatch(db, id); if (m.status === 'check') await finish(db, m, null); });
   } catch (e) { console.error('housekeeping:', e.message); }
 }
 

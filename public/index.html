@@ -184,6 +184,37 @@ select.input:invalid{color:var(--muted)}
 .contact a.btn{text-decoration:none}
 .code{font-family:var(--f-big);font-size:clamp(1.3rem,6vw,1.8rem);font-weight:700;text-align:center;letter-spacing:.04em;background:var(--card);border:2px dashed var(--line);border-radius:18px;padding:18px 10px;user-select:all}
 
+/* unrated player */
+.hero .big.unr{font-size:clamp(2rem,9.5vw,3rem);letter-spacing:-.01em}
+.hero .unr-sub{font-weight:700;font-size:.92rem;color:var(--on-table-2);margin-top:8px}
+.hero.unrated{align-items:center}
+.hero.unrated>div:first-child{flex:1 1 auto;min-width:0}
+/* notifications bell */
+.bell{position:relative;width:48px;height:48px;flex:none;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:var(--on-bg);display:grid;place-items:center}
+.bell svg{width:24px;height:24px}
+.bell .tag{position:absolute;top:-2px;right:-2px;left:auto}
+.notes{display:flex;flex-direction:column;gap:8px}
+.note-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:12px;text-align:left;width:100%}
+.note-item.new{border-color:var(--ball);box-shadow:0 0 0 2px var(--ball-soft)}
+.note-item .txt{flex:1;min-width:0}
+.note-item .nm{font-weight:800;line-height:1.3}
+.note-item .sub{color:var(--muted);font-weight:600;font-size:.85rem;margin-top:2px}
+.link-btn{border:0;background:none;color:var(--on-bg-2);font-weight:700;font-size:.92rem;text-decoration:underline;text-underline-offset:3px;padding:4px 0;align-self:center}
+.rules{display:flex;flex-direction:column;gap:10px;font-weight:600;line-height:1.45;color:var(--ink)}
+.rules b{font-weight:800}
+.rules .ex{background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:12px 14px;font-size:.92rem}
+/* iOS-style wheel picker */
+.when-sum{font-family:var(--f-big);font-weight:700;font-size:1.05rem;color:var(--ink)}
+.wheels{position:relative;display:grid;grid-template-columns:1.9fr 1fr 14px 1fr;height:200px;background:var(--card);border:1.5px solid var(--line);border-radius:20px;overflow:hidden;touch-action:pan-y}
+.wheels::before{content:"";position:absolute;left:8px;right:8px;top:80px;height:40px;border-radius:12px;background:var(--soft);z-index:0;pointer-events:none}
+.wheels::after{content:"";position:absolute;inset:0;background:linear-gradient(var(--card),rgba(255,255,255,0) 38%,rgba(255,255,255,0) 62%,var(--card));z-index:2;pointer-events:none}
+.wheel{position:relative;z-index:1;height:200px;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.wheel::-webkit-scrollbar{display:none}
+.wheel .pad{height:80px}
+.wheel .it{height:40px;line-height:40px;scroll-snap-align:center;text-align:center;font-weight:700;font-size:1.1rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;cursor:pointer;user-select:none;transition:color .1s}
+.wheel .it.on{color:var(--ink);font-size:1.22rem;font-weight:800}
+.wheels .colon2{position:relative;z-index:1;display:grid;place-items:center;font-weight:800;font-size:1.25rem;color:var(--ink)}
+
 /* ---------- sheet ---------- */
 .scrim{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
 .sheet{width:100%;max-width:560px;background:var(--sheet);color:var(--ink);border-radius:30px 30px 0 0;padding:22px max(20px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px;max-height:100%;overflow:auto;animation:up .2s ease}
@@ -276,6 +307,7 @@ const I = {
   match:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   rank:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-8h5v8M9.5 21V5h5v16M15 21v-5h5v5"/></svg>',
   me:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></svg>',
   plus:'<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12 20 4l-6 16-3-7z"/></svg>'
@@ -289,7 +321,9 @@ const P = pid => db.players.find(p => p.id === pid) || { id: pid, name: 'Игр�
 const me = () => P(db.me);
 const first = p => p.name;
 const short = p => p.name;
-const ranked = () => db.players.filter(p => p.w + p.l > 0).sort((a, b) => b.rating - a.rating);
+const rated = p => p.w + p.l > 0;
+const ratingText = p => rated(p) ? String(p.rating) : 'новичок';
+const ranked = () => db.players.filter(rated).sort((a, b) => b.rating - a.rating);
 const rankOf = pid => { const i = ranked().findIndex(p => p.id === pid); return i < 0 ? null : i + 1; };
 const other = m => m.a === db.me ? m.b : m.a;
 const mine = m => m.a === db.me || m.b === db.me;
@@ -472,9 +506,11 @@ async function api(path, body){
 }
 async function load(){
   const st = await api('/api/state');
-  db.me = st.me.id; db.players = st.players; db.matches = st.matches;
+  db.me = st.me.id; db.players = st.players; db.matches = st.matches; db.notes = st.notes || [];
   if (!db.players.some(p => p.id === db.me)) db.players.push(st.me);
+  announce();
   render();
+  if ($('#notes-list')) drawNotes();
 }
 /* run a server action, then refresh everything */
 async function act(path, body, okMsg, after){
@@ -482,7 +518,62 @@ async function act(path, body, okMsg, after){
   catch(e){ toast(e.message); throw e; }
 }
 
-const S = { view: 'home', auth: 'start', rankAll: false };
+const S = { view: 'home', auth: 'start', rankAll: false, seen: null };
+
+/* ---------- notifications ---------- */
+const unreadNotes = () => (db.notes || []).filter(n => !n.read);
+function noteText(n){
+  const who = n.actor ? P(n.actor).name : '', m = db.matches.find(x => x.id === n.match);
+  switch (n.kind){
+    case 'invite': return { t: `${who} бросает вам вызов`, s: m ? `${when(m.when)} · ${m.place}` : 'Откройте, чтобы принять', go: 'home' };
+    case 'accepted': return { t: `${who} принял(а) ваш вызов`, s: m ? `${when(m.when)} · контакты открыты` : 'Контакты открыты', go: 'matches' };
+    case 'declined': return { t: `${who} отклонил(а) вызов`, s: 'Попробуйте бросить вызов кому-то ещё', go: 'home' };
+    case 'cancelled': return { t: `${who} отменил(а) матч`, s: m ? when(m.when) : '', go: 'matches' };
+    case 'score': return { t: `${who} внёс счёт ${m && m.sa != null ? scoreFor(m) : ''}`.trim(), s: 'Подтвердите, если всё верно', go: 'matches' };
+    case 'confirmed': {
+      const won = m && m.winner === db.me, d = m ? (won ? m.d : m.dl) : null;
+      return { t: `${who} подтвердил(а) счёт`, s: m ? (won ? `Победа ${scoreFor(m)} · +${d} к рейтингу` : `Поражение ${scoreFor(m)} · −${d}`) : 'Рейтинг обновлён', go: 'me' };
+    }
+    case 'auto': return { t: 'Счёт засчитан автоматически', s: 'Соперник не ответил 3 дня', go: 'me' };
+  }
+  return { t: 'Обновление', s: '', go: 'home' };
+}
+function announce(){
+  const un = unreadNotes();
+  try { document.title = (un.length ? `(${un.length}) ` : '') + 'Podacha'; } catch(e){}
+  if (S.seen === null){ S.seen = new Set((db.notes || []).map(n => n.id)); return; }
+  const fresh = (db.notes || []).filter(n => !S.seen.has(n.id));
+  fresh.forEach(n => S.seen.add(n.id));
+  if (!fresh.length) return;
+  const nt = noteText(fresh[0]);
+  toast(fresh.length > 1 ? `${nt.t} и ещё ${fresh.length - 1}` : nt.t);
+  if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted'){
+    try { const x = new Notification('Подача', { body: nt.t + (nt.s ? ` — ${nt.s}` : ''), icon: '/favicon.svg', tag: 'podacha-' + fresh[0].id }); x.onclick = () => { window.focus(); S.view = nt.go; render(); x.close(); }; } catch(e){}
+  }
+}
+function ago(t){
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return 'только что';
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.round(m / 60); if (h < 24) return `${h} ч назад`;
+  return new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+function openNotes(){
+  close();
+  sheet(`${head('Уведомления')}<div class="notes" id="notes-list"></div><div id="notes-perm"></div>`);
+  drawNotes();
+  if (unreadNotes().length) api('/api/notifications/read', {}).then(() => { (db.notes || []).forEach(n => n.read = true); announce(); render(); }).catch(() => {});
+}
+function drawNotes(){
+  const box = $('#notes-list'); if (!box) return;
+  const list = db.notes || [];
+  box.innerHTML = list.length ? list.map(n => { const nt = noteText(n), a = n.actor ? P(n.actor) : null;
+    return `<button class="note-item${n.read ? '' : ' new'}" data-a="note:${nt.go}">${a ? av(a) : `<span class="av" style="--h:22">✓</span>`}<div class="txt"><p class="nm">${esc(nt.t)}</p><p class="sub">${esc(nt.s ? nt.s + ' · ' : '')}${ago(n.at)}</p></div></button>`; }).join('')
+    : `<p class="hint" style="padding:24px 0">Пока нет уведомлений. Здесь появятся вызовы, принятые матчи и счета.</p>`;
+  const perm = $('#notes-perm');
+  if (perm) perm.innerHTML = ('Notification' in window && Notification.permission === 'default')
+    ? `<button class="btn alt" data-a="perm" style="margin-top:6px">Получать уведомления в браузере</button><p class="fine" style="margin-top:6px;text-align:center">Сработают, пока сайт открыт во вкладке.</p>` : '';
+}
 
 /* ---------- auth ---------- */
 function renderAuth(){
@@ -574,13 +665,15 @@ function vHome(){
   const open = db.matches.filter(m => m.status === 'open' && m.a !== db.me && m.when > Date.now() - 3 * 3600e3).sort((a, b) => same(a) - same(b) || a.when - b.when);
   const rows = [...t.map(m => ({ m, hot: true })), ...open.map(m => ({ m }))].slice(0, 4);
   return `
-  <div class="top"><div><p class="hello">Привет, ${esc(first(p))}</p><h1>Сыграем?</h1></div></div>
+  <div class="top"><div><p class="hello">Привет, ${esc(first(p))}</p><h1>Сыграем?</h1></div>${bellBtn()}</div>
   <div class="split">
     <div>
-      <div class="hero">
+      ${rated(p) ? `<div class="hero">
         <div><p class="lbl">Рейтинг</p><p class="big num">${p.rating}</p></div>
-        <div class="side"><b>${rk ? '#' + rk : 'Новичок'}</b><span>${p.w}&nbsp;побед · ${p.l}&nbsp;пораж.</span></div>
-      </div>
+        <div class="side"><b>${rk ? '#' + rk : '—'}</b><span>${p.w}&nbsp;побед · ${p.l}&nbsp;пораж.</span></div>
+      </div>` : `<div class="hero unrated">
+        <div><p class="lbl">Рейтинг</p><p class="big unr">Новичок</p><p class="unr-sub">Ещё нет рейтинга — сыграйте первый матч</p></div>
+      </div>`}
       <button class="btn main" data-a="new">${I.plus}Бросить вызов</button>
     </div>
     <div>
@@ -594,6 +687,7 @@ function vHome(){
     </div>
   </div>`;
 }
+const bellBtn = () => { const n = unreadNotes().length; return `<button class="bell" data-a="notes" aria-label="Уведомления${n ? ': ' + n + ' новых' : ''}">${I.bell}${n ? `<span class="tag">${n}</span>` : ''}</button>`; };
 function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]; return `${x}:${y}`; }
 
 function vMatches(){
@@ -601,7 +695,7 @@ function vMatches(){
   const waiting = db.matches.filter(m => m !== n && mine(m) && ((m.status === 'open' && m.a === db.me) || (m.status === 'invite' && m.a === db.me) || (m.status === 'check' && m.by === db.me)));
   const last = db.matches.filter(m => mine(m) && m.status === 'done').sort((a, b) => b.when - a.when).slice(0, 3);
   return `
-  <div class="top"><h1>Матчи</h1></div>
+  <div class="top"><h1>Матчи</h1>${bellBtn()}</div>
   <div class="split">
     <div>
     ${n ? `
@@ -626,7 +720,7 @@ function vMatches(){
       }).join('')}</div>` : ''}
       ${last.length ? `<div class="sec-title"><h2>Последние</h2></div><div class="list">${last.map(m => {
         const o = P(other(m)), won = m.winner === db.me;
-        return `<div class="item">${av(o)}<div class="txt"><p class="nm">${esc(o.name)}</p><p class="sub">${scoreFor(m)}</p></div><b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' : '−'}${m.d}</b></div>`;
+        return `<div class="item">${av(o)}<div class="txt"><p class="nm">${esc(o.name)}</p><p class="sub">${scoreFor(m)}</p></div><b class="rank-r ${won ? 'win' : 'loss'}">${won ? '+' + m.d : '−' + m.dl}</b></div>`;
       }).join('')}</div>` : ''}
     </div>
   </div>`;
@@ -644,7 +738,8 @@ function vRank(){
     ${top.map(row).join('')}
     ${myR && myR > 6 ? row(me(), myR - 1) : ''}
   </div>` : ''}
-  ${!myR ? `<p class="hint">Сыграйте первый матч, чтобы попасть в рейтинг</p>` : ''}`;
+  ${!myR ? `<p class="hint">Сыграйте первый матч, чтобы попасть в рейтинг</p>` : ''}
+  <button class="link-btn" data-a="rules">Как считается рейтинг?</button>`;
 }
 
 function vMe(){
@@ -654,7 +749,7 @@ function vMe(){
   return `
   <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p></div></div>
   <div class="stats">
-    <div class="stat"><b class="num">${p.rating}</b><span>рейтинг</span></div>
+    <div class="stat"><b class="num"${rated(p) ? '' : ' style="font-size:1.4rem"'}>${rated(p) ? p.rating : '—'}</b><span>${rated(p) ? 'рейтинг' : 'нет рейтинга'}</span></div>
     <div class="stat"><b class="win num">${p.w}</b><span>победы</span></div>
     <div class="stat"><b class="loss num">${p.l}</b><span>поражения</span></div>
   </div>
@@ -672,7 +767,8 @@ function render(){
   document.body.classList.toggle('in', !!db.me);
   if (!db.me){ renderAuth(); return; }
   const n = todo().length;
-  const badge = v => v === 'home' && n ? `<span class="tag">${n}</span>` : '';
+  const u = unreadNotes().length;
+  const badge = v => v === 'home' && (n || u) ? `<span class="tag">${n || u}</span>` : '';
   const tab = (v, icon, label) => `<button class="nav" data-a="go:${v}" ${S.view === v ? 'aria-current="page"' : ''}>${icon}${label}${badge(v)}</button>`;
   const tabs = tab('home', I.home, 'Главная') + tab('matches', I.match, 'Матчи') + tab('rank', I.rank, 'Рейтинг') + tab('me', I.me, 'Профиль');
   const view = { home: vHome, matches: vMatches, rank: vRank, me: vMe }[S.view]();
@@ -689,24 +785,73 @@ const head = t => `<div class="sheet-head"><h2>${t}</h2><button class="x" data-a
 
 function openNew(){
   close();
-  C = { who: null, day: 1, hour: 18, bo: 5, ct: savedContact() };
+  C = { who: null, day: 1, hour: 18, min: 0, bo: 5, ct: savedContact() };
   drawNew();
 }
 function drawNew(){
   const opps = db.players.filter(p => p.id !== db.me).sort((a, b) => Math.abs(a.rating - me().rating) - Math.abs(b.rating - me().rating));
-  const days = [[0, 'Сегодня'], [1, 'Завтра'], [2, 'Послезавтра']];
   sheet(`${head('Новый вызов')}
     <div class="group"><label>Кому</label><div class="picks">
       <button data-a="who:" aria-pressed="${C.who === null}"><span class="av" style="--h:22">Все</span><span>Любому</span></button>
       ${opps.map(p => `<button data-a="who:${p.id}" aria-pressed="${C.who === p.id}">${av(p)}<span>${esc(first(p))}</span></button>`).join('')}
     </div></div>
-    <div class="group"><label>Когда</label><div class="seg">${days.map(([d, t]) => `<button data-a="day:${d}" aria-pressed="${C.day === d}">${t}</button>`).join('')}</div>
-      <div class="seg">${[10, 14, 18, 20].map(h => `<button data-a="hour:${h}" aria-pressed="${C.hour === h}">${h}:00</button>`).join('')}</div></div>
+    <div class="group"><label>Когда</label>
+      <p class="when-sum" id="when-sum"></p>
+      <div class="wheels">
+        ${wheel('w-day', DAYS().map(d => d.label), C.day)}
+        ${wheel('w-hour', Array.from({ length: 24 }, (_, i) => pad2(i)), C.hour)}
+        <span class="colon2">:</span>
+        ${wheel('w-min', Array.from({ length: 60 }, (_, i) => pad2(i)), C.min)}
+      </div></div>
     <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Спортзал, стол 3" value="${esc(C.place || '')}"></div>
     <div class="group"><label>Игра</label><div class="seg">${[3, 5].map(b => `<button data-a="bo:${b}" aria-pressed="${C.bo === b}">До ${need(b)} побед</button>`).join('')}</div></div>
     ${contactBlock(C.ct)}
     <p class="err" id="n-err"></p>
     <button class="btn main" data-a="send">${C.who ? 'Вызвать ' + esc(first(P(C.who))) : 'Опубликовать вызов'}</button>`);
+  initWheels();
+}
+/* ---------- iOS-style scrolling wheels ---------- */
+const ROW = 40;
+const pad2 = n => String(n).padStart(2, '0');
+function DAYS(){
+  const out = [], base = new Date(); base.setHours(0, 0, 0, 0);
+  for (let i = 0; i < 31; i++){
+    const d = new Date(base); d.setDate(base.getDate() + i);
+    let label = i === 0 ? 'Сегодня' : i === 1 ? 'Завтра' : d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '');
+    out.push({ d, label: label.charAt(0).toUpperCase() + label.slice(1) });
+  }
+  return out;
+}
+function wheel(id, items, sel){
+  return `<div class="wheel" id="${id}" role="listbox" tabindex="0" aria-label="${id === 'w-day' ? 'Дата' : id === 'w-hour' ? 'Часы' : 'Минуты'}"><div class="pad"></div>${items.map((t, i) => `<div class="it${i === sel ? ' on' : ''}" data-i="${i}" role="option">${t}</div>`).join('')}<div class="pad"></div></div>`;
+}
+function wheelIndex(el){ return Math.max(0, Math.min(el.querySelectorAll('.it').length - 1, Math.round(el.scrollTop / ROW))); }
+function readWheels(){
+  const d = $('#w-day'), h = $('#w-hour'), m = $('#w-min');
+  if (!d) return;
+  C.day = wheelIndex(d); C.hour = wheelIndex(h); C.min = wheelIndex(m);
+}
+function whenFromC(){ const d = new Date(DAYS()[C.day].d); d.setHours(C.hour, C.min, 0, 0); return d; }
+function updateWhenSum(){
+  const el = $('#when-sum'); if (!el) return;
+  const d = whenFromC();
+  el.textContent = d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, c => c.toUpperCase()) + ' в ' + pad2(C.hour) + ':' + pad2(C.min);
+  el.style.color = +d < Date.now() ? 'var(--loss)' : '';
+}
+function initWheels(){
+  [['w-day', 'day'], ['w-hour', 'hour'], ['w-min', 'min']].forEach(([id, key]) => {
+    const el = $('#' + id); if (!el) return;
+    el.scrollTop = C[key] * ROW;
+    let t;
+    const mark = () => { const i = wheelIndex(el); el.querySelectorAll('.it').forEach((x, j) => x.classList.toggle('on', j === i)); C[key] = i; updateWhenSum(); };
+    el.addEventListener('scroll', () => { clearTimeout(t); t = setTimeout(mark, 60); }, { passive: true });
+    el.addEventListener('click', e => { const it = e.target.closest('.it'); if (it) el.scrollTo({ top: +it.dataset.i * ROW, behavior: 'smooth' }); });
+    el.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault(); el.scrollTo({ top: (wheelIndex(el) + (e.key === 'ArrowDown' ? 1 : -1)) * ROW, behavior: 'smooth' });
+    });
+  });
+  updateWhenSum();
 }
 let A;
 function openAva(first){
@@ -722,7 +867,7 @@ function drawAva(){
     <div class="group"><label>Цвет · ${ANIMALS[A.k].n}</label><div class="dots">${FURS.map((c, i) => `<button data-a="afur:${i}" aria-pressed="${A.fur === c}" style="background:${c || ANIMALS[A.k].fur}" aria-label="${c ? 'Цвет ' + i : 'Натуральный'}" title="${c ? '' : 'Натуральный'}"></button>`).join('')}</div></div>
     <button class="btn main" data-a="ava-save">Сохранить</button>`);
 }
-function keepNew(){ C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; }
+function keepNew(){ C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function openScore(mid, title = 'Какой счёт?'){
   const m = db.matches.find(x => x.id === mid);
   C = { mid, bo: m.bo, x: 0, y: 0 };
@@ -762,12 +907,25 @@ function openAccept(mid){
   const m = db.matches.find(x => x.id === mid), o = P(m.a);
   AC = { mid, ct: same ? AC.ct : savedContact() };
   sheet(`${head('Принять вызов')}
-    <div class="item" style="border:1.5px solid var(--line)">${av(o)}<div class="txt"><p class="nm">${esc(o.name)} · ${o.rating}</p><p class="sub">${esc(when(m.when))} · ${esc(m.place)}</p></div></div>
+    <div class="item" style="border:1.5px solid var(--line)">${av(o)}<div class="txt"><p class="nm">${esc(o.name)} · ${ratingText(o)}</p><p class="sub">${esc(when(m.when))} · ${esc(m.place)}</p></div></div>
     ${contactBlock(AC.ct)}
     <p class="err" id="ac-err"></p>
     <button class="btn main" data-a="accept-go">Принять и обменяться контактами</button>`);
 }
 
+function openRules(){
+  close();
+  sheet(`${head('Как считается рейтинг')}
+    <div class="rules">
+      <p>Рейтинг работает как в шахматах (система Эло) — так же устроены рейтинги настольного тенниса в Германии и США.</p>
+      <p><b>Победа приносит очки, поражение отнимает половину.</b> Так делают в любительском рейтинге RTTF — играть не страшно.</p>
+      <p><b>Сильный соперник — больше очков.</b> Победа над тем, у кого рейтинг выше, даёт заметно больше.</p>
+      <p><b>Уверенная победа ценится больше:</b> 3:0 — ×1,2, 3:1 — ×1,07, 3:2 — ×0,93.</p>
+      <p><b>Первые 10 матчей</b> рейтинг меняется быстрее, чтобы быстро найти ваш уровень.</p>
+      <p class="ex">Пример: два равных игрока, 3:1. Победитель получает <b>+17</b>, проигравший теряет <b>−9</b>. Новички в первых матчах: <b>+26</b> и <b>−13</b>.</p>
+      <p>Рейтинг появляется после первого подтверждённого матча. Счёт засчитывается, только когда соперник его подтвердит.</p>
+    </div>`);
+}
 function toast(t){ document.querySelector('.toast')?.remove(); const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 2600); }
 
 /* ---------- actions ---------- */
@@ -792,8 +950,9 @@ document.addEventListener('click', e => {
       const cv = normContact(C.ct.type, $('#c-val').value);
       if (!cv) { nerr(C.ct.type === 'tg' ? 'Проверьте Telegram: @username, от 5 символов' : 'Проверьте номер телефона'); return; }
       rememberContact(C.ct.type, $('#c-val').value.trim());
-      const d = new Date(Date.now() + C.day * 864e5); d.setHours(C.hour, 0, 0, 0);
-      if (+d < Date.now()) { $('#n-err').textContent = 'Это время уже прошло'; return; }
+      readWheels();
+      const d = whenFromC();
+      if (+d < Date.now() - 60e3) { nerr('Это время уже прошло — выберите время позже'); return; }
       el.disabled = true;
       api('/api/challenges', { who: C.who, when: d.toISOString(), place, bo: C.bo, contact: { type: C.ct.type, val: $('#c-val').value } })
         .then(async () => { close(); S.view = 'matches'; await load(); toast(C.who ? 'Вызов отправлен' : 'Вызов опубликован'); })
@@ -828,19 +987,31 @@ document.addEventListener('click', e => {
         .catch(() => { el.disabled = false; });
       break;
     }
-    case 'ok': el.disabled = true; act(`/api/challenges/${b}/confirm`, {}, r => r.won ? `Победа! +${r.d} к рейтингу` : `Засчитано. −${r.d}`).catch(() => { el.disabled = false; }); break;
+    case 'ok': el.disabled = true; act(`/api/challenges/${b}/confirm`, {}, r => r.won ? `Победа! +${r.gain} к рейтингу` : `Засчитано. −${r.loss} к рейтингу`).catch(() => { el.disabled = false; }); break;
     case 'no': openScore(b, 'Какой был счёт?'); break;
     case 'rk': S.rankAll = b === 'all'; render(); break;
+    case 'notes': openNotes(); break;
+    case 'note': close(); S.view = b; render(); break;
+    case 'perm': try { Notification.requestPermission().then(() => drawNotes()); } catch(e){} break;
+    case 'rules': openRules(); break;
     case 'ava': openAva(false); break;
     case 'ak': A.k = b; drawAva(); break;
     case 'afur': A.fur = FURS[+b]; drawAva(); break;
     case 'ava-save': act('/api/avatar', { k: A.k, fur: A.fur }, 'Аватар сохранён', () => close()).catch(() => {}); break;
-    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [] }; S.auth = 'start'; render(); }); break;
+    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [], notes: [] }; S.seen = null; S.auth = 'start'; render(); }); break;
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 /* keep the screen fresh: new challenges, accepted invites, confirmed scores */
-setInterval(() => { if (db.me && document.visibilityState === 'visible' && !document.querySelector('.scrim')) load().catch(() => {}); }, 20000);
+let lastPoll = 0;
+setInterval(() => {
+  if (!db.me) return;
+  const gap = document.visibilityState === 'visible' ? 20000 : 60000;
+  if (Date.now() - lastPoll < gap) return;
+  lastPoll = Date.now();
+  const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  if (!typing) load().catch(() => {});
+}, 5000);
 document.addEventListener('visibilitychange', () => { if (db.me && document.visibilityState === 'visible') load().catch(() => {}); });
 api('/api/me').then(r => r.me ? load() : render()).catch(() => render());
 })();
