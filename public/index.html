@@ -80,7 +80,8 @@ select.input:invalid{color:var(--muted)}
 /* ---------- shell ---------- */
 .rail{display:none}
 .screen{flex:1;display:flex;flex-direction:column;min-width:0;height:100%}
-.view{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;padding-block:32px 28px;padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(30px,env(safe-area-inset-right,0px));width:100%;max-width:1100px;margin:0 auto;overflow:hidden}
+.view{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;padding-block:32px 28px;padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(30px,env(safe-area-inset-right,0px));width:100%;max-width:1100px;margin:0 auto;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.view>*{flex-shrink:0}
 .tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .tabs button{border:0;background:none;height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--on-bg-2);font-weight:700;font-size:.78rem;position:relative}
 .tabs button svg{width:26px;height:26px}
@@ -215,6 +216,12 @@ select.input:invalid{color:var(--muted)}
 .wheel .it.on{color:var(--ink);font-size:1.22rem;font-weight:800}
 .wheels .colon2{position:relative;z-index:1;display:grid;place-items:center;font-weight:800;font-size:1.25rem;color:var(--ink)}
 
+/* edit profile */
+.edit-btn{align-self:flex-start;border:0;background:rgba(255,255,255,.14);color:var(--on-bg);font-weight:700;font-size:.9rem;border-radius:999px;padding:8px 14px;margin-top:8px}
+.ava-row{display:flex;align-items:center;gap:14px}
+.ava-row .av{width:64px;height:64px}
+.nick-state{font-size:.85rem;font-weight:700;min-height:1.2em}
+.nick-state.ok{color:var(--win)} .nick-state.bad{color:var(--loss)}
 /* telegram reminder */
 .nudge{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding-top:6px}
 .nudge .ic{width:64px;height:64px;border-radius:50%;background:#2AABEE;display:grid;place-items:center}
@@ -648,7 +655,7 @@ function renderAuth(){
     try {
       if (mode === 'reg'){
         if (!NICK_RE.test(nick)) return err('Никнейм: 3–16 символов, буквы, цифры или _');
-        if (RESERVED.includes(nick.toLowerCase())) return err('Этот никнейм занят');
+        if (RESERVED.includes(nick.toLowerCase())) return err('Этот никнейм уже существует. Выберите другой');
         const city = $('#a-city').value;
         if (!city) return err('Выберите город');
         if (pass.length < 6) return err('Пароль — минимум 6 символов');
@@ -771,7 +778,7 @@ function vMe(){
   const form = games.slice(0, 5).map(m => m.winner === db.me ? 'W' : 'L');
   const pct = p.w + p.l ? Math.round(p.w / (p.w + p.l) * 100) : 0;
   return `
-  <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p></div></div>
+  <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p><button class="edit-btn" data-a="edit-prof">Изменить профиль</button></div></div>
   <div class="stats">
     <div class="stat"><b class="num"${rated(p) ? '' : ' style="font-size:1.4rem"'}>${rated(p) ? p.rating : '—'}</b><span>${rated(p) ? 'рейтинг' : 'нет рейтинга'}</span></div>
     <div class="stat"><b class="win num">${p.w}</b><span>победы</span></div>
@@ -814,6 +821,37 @@ function maybeNudge(){
   if (Date.now() - last < NUDGE_EVERY) return;
   S.nudged = true;
   setTimeout(() => { if (!S.tg.linked && !document.querySelector('.scrim')) openNudge(); else S.nudged = false; }, 1800);
+}
+/* ---------- edit profile ---------- */
+let EP;
+function openEdit(){
+  close();
+  const p = me();
+  EP = { nick: p.name, city: p.city, ok: true };
+  sheet(`${head('Профиль')}
+    <div class="group"><label>Аватар</label>
+      <div class="ava-row">${av(p)}<button class="btn alt sm" data-a="ava">Сменить аватар</button></div></div>
+    <div class="group"><label for="e-nick">Никнейм</label>
+      <input class="input" id="e-nick" value="${esc(p.name)}" maxlength="16" autocapitalize="off" autocomplete="off">
+      <p class="nick-state" id="e-nick-state"></p>
+      <p class="fine">Входите в аккаунт с новым никнеймом. Рейтинг и матчи сохранятся.</p></div>
+    <div class="group"><label for="e-city">Город</label>
+      <select class="input" id="e-city">${CITIES.map(c => `<option${c === p.city ? ' selected' : ''}>${c}</option>`).join('')}</select>
+      <p class="fine">Вызовы и уведомления в Telegram будут приходить из нового города.</p></div>
+    <p class="err" id="e-err"></p>
+    <button class="btn main" data-a="save-prof" id="e-save">Сохранить</button>`);
+  let t;
+  $('#e-nick').addEventListener('input', () => {
+    const v = $('#e-nick').value.trim().replace(/^@/, ''), st = $('#e-nick-state');
+    EP.ok = false; clearTimeout(t);
+    if (v.toLowerCase() === me().name.toLowerCase()){ st.textContent = ''; st.className = 'nick-state'; EP.ok = true; return; }
+    if (!NICK_RE.test(v)){ st.textContent = '3–16 символов: буквы, цифры или _'; st.className = 'nick-state bad'; return; }
+    st.textContent = 'Проверяем…'; st.className = 'nick-state';
+    t = setTimeout(() => api('/api/nick?n=' + encodeURIComponent(v)).then(r => {
+      if ($('#e-nick').value.trim().replace(/^@/, '') !== v) return;
+      EP.ok = r.free; st.textContent = r.free ? '✓ Свободен' : r.error; st.className = 'nick-state ' + (r.free ? 'ok' : 'bad');
+    }).catch(() => {}), 350);
+  });
 }
 function openNudge(){
   sheet(`<div class="nudge">
@@ -1065,6 +1103,15 @@ document.addEventListener('click', e => {
     case 'no': openScore(b, 'Какой был счёт?'); break;
     case 'rk': S.rankAll = b === 'all'; render(); break;
     case 'notes': openNotes(); break;
+    case 'edit-prof': openEdit(); break;
+    case 'save-prof': {
+      const nick = $('#e-nick').value.trim().replace(/^@/, ''), city = $('#e-city').value, err = t => $('#e-err').textContent = t;
+      if (!NICK_RE.test(nick)) { err('Никнейм: 3–16 символов, буквы, цифры или _'); return; }
+      el.disabled = true;
+      api('/api/profile', { nick, city }).then(async () => { close(); await load(); toast('Профиль сохранён'); })
+        .catch(ex => { err(ex.message); el.disabled = false; const st = $('#e-nick-state'); if (st && /никнейм/i.test(ex.message)){ st.textContent = ex.message; st.className = 'nick-state bad'; } });
+      break;
+    }
     case 'tg-link': tgLink(el); break;
     case 'nudge-go': nudgeSeen(); close(); tgLink(null); break;
     case 'nudge-later': nudgeSeen(); close(); break;

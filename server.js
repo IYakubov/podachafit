@@ -271,7 +271,7 @@ app.get('/api/me', wrap(async (req, res) => { const u = await auth(req); res.jso
 app.post('/api/register', wrap(async (req, res) => {
   const nick = String(req.body.nick || '').trim().replace(/^@/, ''), city = String(req.body.city || ''), pass = String(req.body.pass || '');
   if (!NICK_RE.test(nick)) bad('Никнейм: 3–16 символов, буквы, цифры или _');
-  if (RESERVED.includes(nick.toLowerCase())) bad('Этот никнейм занят');
+  if (RESERVED.includes(nick.toLowerCase())) bad('Этот никнейм уже существует. Выберите другой');
   if (!CITIES.includes(city)) bad('Выберите город');
   if (pass.length < 6 || pass.length > 100) bad('Пароль — минимум 6 символов');
   const ava = req.body.ava || {};
@@ -281,7 +281,7 @@ app.post('/api/register', wrap(async (req, res) => {
     const r = await q(`INSERT INTO users (nick, nick_lower, pass_hash, code_hash, city, ava_kind) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [nick, nick.toLowerCase(), await bcrypt.hash(pass, 10), await bcrypt.hash(code, 10), city, kind]);
     const u = r.rows[0]; setSession(res, u.id, u.session_ver); res.json({ me: pub(u), code });
-  } catch (e) { if (e.code === '23505') bad('Этот никнейм уже занят. Попробуйте другой'); throw e; }
+  } catch (e) { if (e.code === '23505') bad('Этот никнейм уже существует. Выберите другой'); throw e; }
 }));
 
 app.post('/api/login', wrap(async (req, res) => {
@@ -304,6 +304,32 @@ app.post('/api/reset', wrap(async (req, res) => {
 }));
 
 app.post('/api/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
+
+/* ---- profile: nickname and city can be changed ---- */
+function nickProblem(nick){
+  if (!NICK_RE.test(nick)) return 'Никнейм: 3–16 символов, буквы, цифры или _';
+  if (RESERVED.includes(nick.toLowerCase())) return 'Этот никнейм уже существует. Выберите другой';
+  return null;
+}
+app.get('/api/nick', wrap(async (req, res) => {
+  const u = await auth(req);
+  const nick = String(req.query.n || '').trim().replace(/^@/, '');
+  const problem = nickProblem(nick);
+  if (problem) return res.json({ free: false, error: problem });
+  const r = await q('SELECT id FROM users WHERE nick_lower=$1', [nick.toLowerCase()]);
+  const free = !r.rows[0] || (u && r.rows[0].id === u.id);
+  res.json({ free, error: free ? null : 'Этот никнейм уже существует. Выберите другой' });
+}));
+app.post('/api/profile', wrap(async (req, res) => {
+  const u = await must(req);
+  const nick = String(req.body.nick || '').trim().replace(/^@/, ''), city = String(req.body.city || '');
+  const problem = nickProblem(nick); if (problem) bad(problem);
+  if (!CITIES.includes(city)) bad('Выберите город');
+  try {
+    const r = await q('UPDATE users SET nick=$2, nick_lower=$3, city=$4 WHERE id=$1 RETURNING *', [u.id, nick, nick.toLowerCase(), city]);
+    res.json({ me: pub(r.rows[0]) });
+  } catch (e) { if (e.code === '23505') bad('Этот никнейм уже существует. Выберите другой'); throw e; }
+}));
 
 app.post('/api/avatar', wrap(async (req, res) => {
   const u = await must(req);
