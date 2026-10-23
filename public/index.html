@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#1D4E9E">
 <meta name="description" content="Подача — находи соперников по настольному теннису, бросай вызовы и поднимайся в рейтинге.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -37,7 +37,7 @@ p{margin:0}
 
 /* pinned to the visible screen: works the same in Safari, Chrome and in-app browsers, whatever their toolbars do */
 #app{position:fixed;inset:0;display:flex;z-index:1;overflow:hidden}
-@media (max-width:899px){body.in::after{bottom:calc(80px + env(safe-area-inset-bottom,0px))}}
+body.in::after{display:none}
 /* table lines: white edge + centre line, like a real table seen from above */
 body::after{content:"";position:fixed;inset:max(12px,env(safe-area-inset-top,0px)) 12px 12px;border:3px solid var(--line-w);border-radius:4px;pointer-events:none;z-index:0;background:linear-gradient(to right,transparent calc(50% - 1.5px),var(--line-w) calc(50% - 1.5px),var(--line-w) calc(50% + 1.5px),transparent calc(50% + 1.5px))}
 
@@ -81,9 +81,11 @@ select.input:invalid{color:var(--muted)}
 /* ---------- shell ---------- */
 .rail{display:none}
 .screen{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
-.view{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;padding-top:calc(32px + env(safe-area-inset-top,0px));padding-bottom:28px;padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(30px,env(safe-area-inset-right,0px));width:100%;max-width:1100px;margin:0 auto;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.view>*{flex-shrink:0}
-.tabs{flex:none;display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.view{flex:1;min-height:0;width:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px}
+/* the ping-pong table: white edge + centre line, drawn around the content and growing with it */
+.court{min-height:100%;max-width:1100px;margin:0 auto;border:3px solid var(--line-w);border-radius:4px;background:linear-gradient(to right,transparent calc(50% - 1.5px),var(--line-w) calc(50% - 1.5px),var(--line-w) calc(50% + 1.5px),transparent calc(50% + 1.5px));display:flex;flex-direction:column;gap:20px;padding:22px 18px 26px}
+.court>*{flex-shrink:0}
+.tabs{flex:none;display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy)}
 .tabs button{border:0;background:none;height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--on-bg-2);font-weight:700;font-size:.78rem;position:relative}
 .tabs button svg{width:26px;height:26px}
 .tabs button[aria-current]{color:var(--on-bg)}
@@ -284,7 +286,7 @@ select.input:invalid{color:var(--muted)}
 
 /* short phones: tighten */
 @media (max-height:720px){
-  .view{gap:14px;padding-block:24px 18px}
+  .court{gap:14px;padding-block:18px 20px}
   .hero{padding:18px 22px}.hero .big{font-size:3.2rem}
   .item{min-height:66px;padding:10px 12px}.av{width:44px;height:44px}
   .btn{min-height:56px}
@@ -305,8 +307,8 @@ select.input:invalid{color:var(--muted)}
   .rail button.nav[aria-current] svg{color:var(--ball)}
   .rail .tag{position:static;margin-left:auto}
   .rail .btn{margin-top:auto}
-  .view{padding:48px 64px;gap:26px}
-  body.in::after{left:252px}
+  .view{padding:24px}
+  .court{padding:36px 48px;gap:26px}
   .split{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:28px}
   .split>div{display:flex;flex-direction:column;gap:18px;min-height:0}
   .top .btn{display:none}
@@ -319,14 +321,14 @@ select.input:invalid{color:var(--muted)}
 /* phones: plain stacked blocks, nothing is allowed to shrink (Safari/Chrome on iPhone squeezed cards on top of each other) */
 @media (max-width:899px){
   /* normal block flow: every card keeps its natural height, spacing by margins */
-  .view{display:block}
-  .view>*+*{margin-top:20px}
+  .court{display:block}
+  .court>*+*{margin-top:20px}
   .split,.split>div{display:block}
   .split>div+div{margin-top:20px}
   .split>div>*+*{margin-top:18px}
   .split>div:empty{display:none}
   .split .empty{min-height:150px}
-  .view>.board,.view>.list{margin-top:16px}
+  .court>.board,.court>.list{margin-top:16px}
 }
 </style>
 
@@ -803,7 +805,7 @@ function vMe(){
     ${form.length ? `<div class="form-row">${form.map(f => `<i class="${f}">${f === 'W' ? 'В' : 'П'}</i>`).join('')}</div>` : '<span style="color:var(--ink)">Пока нет сыгранных матчей</span>'}
   </div>
   <div id="tg-card"></div>
-  <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px">
+  <div style="margin-top:24px;display:flex;flex-direction:column;gap:6px">
     <button class="btn ghost" data-a="logout">Выйти</button>
   </div>`;
 }
@@ -820,7 +822,7 @@ function render(){
   const view = { home: vHome, matches: vMatches, rank: vRank, me: vMe }[S.view]();
   $('#app').innerHTML = `
     <nav class="rail"><div class="logo"><svg class="brand" viewBox="120 58 960 290" role="img" aria-label="Подача FIT"><defs><linearGradient id="pd-lime2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#EE5A12"/></linearGradient></defs><text x="600" y="204" text-anchor="middle" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="900" font-style="italic" letter-spacing="-8" textLength="940" lengthAdjust="spacingAndGlyphs">Подача</text><g fill="url(#pd-lime2)"><path d="M190 269 L525 239 L545 239 L522 251 L190 278 Q177 278 190 269Z"/><path d="M260 291 L518 270 L532 270 L515 280 L260 298 Q248 298 260 291Z"/><path d="M350 310 L520 299 L533 299 L517 307 L350 316 Q340 316 350 310Z"/></g><circle cx="574" cy="278" r="43" fill="url(#pd-lime2)"/><path d="M574 236 C592 249 599 266 592 282 C586 296 577 309 574 320" fill="none" stroke="#5A2205" stroke-width="4" stroke-linecap="round" opacity=".85"/><text x="635" y="335" fill="url(#pd-lime2)" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4">FIT</text></svg></div>${tabs}<button class="btn main" data-a="new">${I.plus}Вызов</button></nav>
-    <div class="screen"><main class="view">${view}</main><nav class="tabs">${tabs}</nav></div>`;
+    <div class="screen"><main class="view"><div class="court">${view}</div></main><nav class="tabs">${tabs}</nav></div>`;
   if (S.view === 'me') drawTg();
 }
 /* ---------- Telegram alerts ---------- */
