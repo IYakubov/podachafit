@@ -215,6 +215,12 @@ select.input:invalid{color:var(--muted)}
 .wheel .it.on{color:var(--ink);font-size:1.22rem;font-weight:800}
 .wheels .colon2{position:relative;z-index:1;display:grid;place-items:center;font-weight:800;font-size:1.25rem;color:var(--ink)}
 
+/* telegram reminder */
+.nudge{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding-top:6px}
+.nudge .ic{width:64px;height:64px;border-radius:50%;background:#2AABEE;display:grid;place-items:center}
+.nudge .ic svg{width:34px;height:34px}
+.nudge h2{font-size:1.4rem;font-weight:700}
+.nudge p{color:var(--muted);font-weight:600;line-height:1.45;max-width:34ch}
 /* telegram card */
 .tg-card{background:var(--card);color:var(--ink);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px}
 .tg-head{display:flex;align-items:center;gap:12px}
@@ -523,10 +529,12 @@ async function api(path, body){
 async function load(){
   const st = await api('/api/state');
   db.me = st.me.id; db.players = st.players; db.matches = st.matches; db.notes = st.notes || [];
+  if (st.tg) S.tg = Object.assign({}, S.tg, st.tg, { pending: S.tg && S.tg.pending && !st.tg.linked });
   if (!db.players.some(p => p.id === db.me)) db.players.push(st.me);
   announce();
   render();
   if ($('#notes-list')) drawNotes();
+  maybeNudge();
 }
 /* run a server action, then refresh everything */
 async function act(path, body, okMsg, after){
@@ -795,6 +803,38 @@ function render(){
   if (S.view === 'me') drawTg();
 }
 /* ---------- Telegram alerts ---------- */
+/* remind players who haven't connected the bot; never shown once they are connected */
+const NUDGE_EVERY = 2 * 864e5;
+const nudgeKey = () => 'pf.tgnudge.' + db.me;
+function nudgeSeen(){ try { localStorage.setItem(nudgeKey(), String(Date.now())); } catch(e){} }
+function maybeNudge(){
+  const t = S.tg;
+  if (!t || !t.available || t.linked || t.pending || S.nudged) return;
+  let last = 0; try { last = +localStorage.getItem(nudgeKey()) || 0; } catch(e){}
+  if (Date.now() - last < NUDGE_EVERY) return;
+  S.nudged = true;
+  setTimeout(() => { if (!S.tg.linked && !document.querySelector('.scrim')) openNudge(); else S.nudged = false; }, 1800);
+}
+function openNudge(){
+  sheet(`<div class="nudge">
+      <span class="ic">${I.tg}</span>
+      <h2>Не пропускайте вызовы</h2>
+      <p>Подключите Telegram — бот сразу сообщит, когда в вашем городе кто-то ищет соперника, примет ваш вызов или внесёт счёт.</p>
+    </div>
+    <button class="btn tg" data-a="nudge-go">Подключить Telegram</button>
+    <button class="btn link" data-a="nudge-later" style="color:var(--muted)">Позже</button>`);
+}
+function tgLink(el){
+  if (el) el.disabled = true;
+  return api('/api/tg/link', {}).then(r => {
+    S.tg.pending = true; paintTg();
+    const w = window.open(r.url, '_blank'); if (!w) location.href = r.url;
+    let n = 0; const iv = setInterval(() => {
+      if (++n > 60){ clearInterval(iv); return; }
+      api('/api/tg').then(x => { if (x.linked){ clearInterval(iv); S.tg = x; paintTg(); toast('Telegram подключён'); } }).catch(() => {});
+    }, 3000);
+  }).catch(ex => { toast(ex.message); if (el) el.disabled = false; });
+}
 function drawTg(refresh){
   const box = $('#tg-card'); if (!box) return;
   if (!S.tg || refresh){ api('/api/tg').then(r => { S.tg = r; paintTg(); }).catch(() => {}); }
@@ -814,7 +854,7 @@ function paintTg(){
 /* ---------- sheets ---------- */
 let C;
 function sheet(html){ const open = document.querySelector('.scrim .sheet'); if (open){ const st = open.scrollTop; open.innerHTML = html; open.scrollTop = st; return; } document.body.insertAdjacentHTML('beforeend', `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`); }
-const close = () => document.querySelector('.scrim')?.remove();
+const close = () => { if (document.querySelector('.scrim .nudge') && db.me) nudgeSeen(); document.querySelector('.scrim')?.remove(); };
 const head = t => `<div class="sheet-head"><h2>${t}</h2><button class="x" data-a="close" aria-label="Закрыть">${I.x}</button></div>`;
 
 function openNew(){
@@ -1025,15 +1065,9 @@ document.addEventListener('click', e => {
     case 'no': openScore(b, 'Какой был счёт?'); break;
     case 'rk': S.rankAll = b === 'all'; render(); break;
     case 'notes': openNotes(); break;
-    case 'tg-link': {
-      el.disabled = true;
-      api('/api/tg/link', {}).then(r => {
-        S.tg.pending = true; paintTg();
-        const w = window.open(r.url, '_blank'); if (!w) location.href = r.url;
-        let n = 0; const iv = setInterval(() => { if (++n > 40 || S.view !== 'me'){ clearInterval(iv); return; } api('/api/tg').then(x => { if (x.linked){ clearInterval(iv); S.tg = x; paintTg(); toast('Telegram подключён'); } }).catch(() => {}); }, 3000);
-      }).catch(ex => { toast(ex.message); el.disabled = false; });
-      break;
-    }
+    case 'tg-link': tgLink(el); break;
+    case 'nudge-go': nudgeSeen(); close(); tgLink(null); break;
+    case 'nudge-later': nudgeSeen(); close(); break;
     case 'tgsw': { S.tg[b] = !S.tg[b]; paintTg(); api('/api/tg/prefs', { city: S.tg.city, mine: S.tg.mine }).catch(ex => { S.tg[b] = !S.tg[b]; paintTg(); toast(ex.message); }); break; }
     case 'tg-off': api('/api/tg/unlink', {}).then(() => { S.tg.linked = false; S.tg.pending = false; paintTg(); toast('Telegram отключён'); }).catch(ex => toast(ex.message)); break;
     case 'note': close(); S.view = b; render(); break;
@@ -1043,7 +1077,7 @@ document.addEventListener('click', e => {
     case 'ak': A.k = b; drawAva(); break;
     case 'afur': A.fur = FURS[+b]; drawAva(); break;
     case 'ava-save': act('/api/avatar', { k: A.k, fur: A.fur }, 'Аватар сохранён', () => close()).catch(() => {}); break;
-    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [], notes: [] }; S.seen = null; S.tg = null; S.auth = 'start'; render(); }); break;
+    case 'logout': api('/api/logout', {}).finally(() => { db = { me: null, players: [], matches: [], notes: [] }; S.seen = null; S.tg = null; S.nudged = false; S.auth = 'start'; render(); }); break;
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });

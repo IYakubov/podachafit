@@ -372,7 +372,8 @@ app.get('/api/state', wrap(async (req, res) => {
   const notes = (await q(`SELECT id, kind, match_id, actor, created_at, read_at FROM notifications
       WHERE user_id = $1 AND created_at > now() - interval '30 days' ORDER BY created_at DESC LIMIT 40`, [u.id])).rows
     .map(n => ({ id: +n.id, kind: n.kind, match: n.match_id, actor: n.actor, at: new Date(n.created_at).getTime(), read: !!n.read_at }));
-  res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)), notes });
+  res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)), notes,
+    tg: { available: !!(TG && BOT_NAME), bot: BOT_NAME, linked: !!u.tg_chat, city: u.tg_city, mine: u.tg_mine } });
 }));
 
 app.post('/api/notifications/read', wrap(async (req, res) => {
