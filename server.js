@@ -449,7 +449,7 @@ app.get('/api/state', wrap(async (req, res) => {
          OR ((a = $1 OR b = $1) AND (status <> 'done' OR updated_at > now() - interval '120 days'))
       ORDER BY when_at DESC LIMIT 500`, [u.id])).rows;
   const notes = (await q(`SELECT id, kind, match_id, actor, created_at, read_at FROM notifications
-      WHERE user_id = $1 AND created_at > now() - interval '30 days' ORDER BY created_at DESC LIMIT 40`, [u.id])).rows
+      WHERE user_id = $1 AND read_at IS NULL AND created_at > now() - interval '30 days' ORDER BY created_at DESC LIMIT 40`, [u.id])).rows
     .map(n => ({ id: +n.id, kind: n.kind, match: n.match_id, actor: n.actor, at: new Date(n.created_at).getTime(), read: !!n.read_at }));
   res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)), notes,
     tg: { available: !!(TG && BOT_NAME), bot: BOT_NAME, linked: !!u.tg_chat, city: u.tg_city, mine: u.tg_mine } });
@@ -457,7 +457,10 @@ app.get('/api/state', wrap(async (req, res) => {
 
 app.post('/api/notifications/read', wrap(async (req, res) => {
   const u = await must(req);
-  await q('UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL', [u.id]);
+  // once seen, a notification is gone for good
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map(Number).filter(Number.isSafeInteger) : null;
+  if (ids) await q('DELETE FROM notifications WHERE user_id = $1 AND id = ANY($2)', [u.id, ids]);
+  else await q('DELETE FROM notifications WHERE user_id = $1', [u.id]);
   res.json({ ok: true });
 }));
 

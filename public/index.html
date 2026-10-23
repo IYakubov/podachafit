@@ -205,6 +205,8 @@ select.input:invalid{color:var(--muted)}
 .note-item .txt{flex:1;min-width:0}
 .note-item .nm{font-weight:800;line-height:1.3}
 .note-item .sub{color:var(--muted);font-weight:600;font-size:.85rem;margin-top:2px}
+.pair2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pair2 .btn{width:100%;text-decoration:none}
 .link-btn{border:0;background:none;color:var(--on-bg-2);font-weight:700;font-size:.92rem;text-decoration:underline;text-underline-offset:3px;padding:4px 0;align-self:center}
 .rules{display:flex;flex-direction:column;gap:10px;font-weight:600;line-height:1.45;color:var(--ink)}
 .rules b{font-weight:800}
@@ -575,7 +577,6 @@ async function load(){
   if (!db.players.some(p => p.id === db.me)) db.players.push(st.me);
   announce();
   render();
-  if ($('#notes-list')) drawNotes();
   maybeNudge();
 }
 /* run a server action, then refresh everything */
@@ -626,16 +627,19 @@ function ago(t){
 }
 function openNotes(){
   close();
+  // keep what's on screen while the window is open; on the server they are deleted right away
+  S.notesShown = (db.notes || []).slice();
   sheet(`${head('Уведомления')}<div class="notes" id="notes-list"></div><div id="notes-perm"></div>`);
   drawNotes();
-  if (unreadNotes().length) api('/api/notifications/read', {}).then(() => { (db.notes || []).forEach(n => n.read = true); announce(); render(); }).catch(() => {});
+  const ids = S.notesShown.map(n => n.id);
+  if (ids.length) api('/api/notifications/read', { ids }).then(() => { db.notes = (db.notes || []).filter(n => !ids.includes(n.id)); announce(); render(); }).catch(() => {});
 }
 function drawNotes(){
   const box = $('#notes-list'); if (!box) return;
-  const list = db.notes || [];
+  const list = S.notesShown || [];
   box.innerHTML = list.length ? list.map(n => { const nt = noteText(n), a = n.actor ? P(n.actor) : null;
     return `<button class="note-item${n.read ? '' : ' new'}" data-a="note:${nt.go}">${a ? av(a) : `<span class="av" style="--h:22">✓</span>`}<div class="txt"><p class="nm">${esc(nt.t)}</p><p class="sub">${esc(nt.s ? nt.s + ' · ' : '')}${ago(n.at)}</p></div></button>`; }).join('')
-    : `<p class="hint" style="padding:24px 0">Пока нет уведомлений. Здесь появятся вызовы, принятые матчи и счета.</p>`;
+    : `<p class="hint" style="padding:24px 0">Новых уведомлений нет. Здесь появятся вызовы, принятые матчи и счета. Просмотренные уведомления исчезают.</p>`;
   const perm = $('#notes-perm');
   if (perm) perm.innerHTML = ('Notification' in window && Notification.permission === 'default')
     ? `<button class="btn alt" data-a="perm" style="margin-top:6px">Получать уведомления в браузере</button><p class="fine" style="margin-top:6px;text-align:center">Сработают, пока сайт открыт во вкладке.</p>` : '';
@@ -670,6 +674,7 @@ function renderAuth(){
       ${mode === 'start' ? `
         <button class="btn main" data-a="auth:reg">Создать аккаунт</button>
         <button class="btn ghost" data-a="auth:login">Войти</button>
+        <button class="btn link" data-a="about">О проекте</button>
       ` : `
       <form id="af" class="field" style="gap:12px" novalidate>
         ${form}
@@ -830,6 +835,7 @@ function vMe(){
   <div id="tg-card"></div>
   <div style="margin-top:24px;display:flex;flex-direction:column;gap:6px">
     <button class="btn ghost" data-a="logout">Выйти</button>
+    <button class="btn link" data-a="about">О проекте и контакты</button>
   </div>`;
 }
 
@@ -855,10 +861,9 @@ const NUDGE_EVERY = 2 * 864e5;
 const nudgeKey = () => 'pf.tgnudge.' + db.me;
 function nudgeSeen(){ try { localStorage.setItem(nudgeKey(), String(Date.now())); } catch(e){} }
 function maybeNudge(){
+  // shown once each time the website is opened, only to players without Telegram, never inside the Mini App
   const t = S.tg;
-  if (!t || !t.available || t.linked || t.pending || S.nudged) return;
-  let last = 0; try { last = +localStorage.getItem(nudgeKey()) || 0; } catch(e){}
-  if (Date.now() - last < NUDGE_EVERY) return;
+  if (IN_TG || !t || !t.available || t.linked || t.pending || S.nudged) return;
   S.nudged = true;
   setTimeout(() => { if (!S.tg.linked && !document.querySelector('.scrim')) openNudge(); else S.nudged = false; }, 1800);
 }
@@ -903,6 +908,23 @@ function openPass(){
     <p class="fine">Не помните текущий пароль? Выйдите и нажмите «Забыли пароль?» — понадобится код восстановления.</p>
     <p class="err" id="pw-err"></p>
     <button class="btn main" data-a="pass-save">Сохранить пароль</button>`);
+}
+const CONTACT_EMAIL = 'mforsoul13@gmail.com';
+function openAbout(){
+  close();
+  sheet(`${head('О проекте')}
+    <div class="rules">
+      <p><b>Подача FIT</b> помогает найти соперника по настольному теннису в вашем городе: бросайте вызов, играйте и поднимайтесь в рейтинге.</p>
+      <p><b>Как это работает.</b> Создайте вызов на нужное время и место или примите чужой. После игры один из соперников вносит счёт, второй подтверждает — и рейтинг обновляется.</p>
+      <p><b>Приватность.</b> Мы не спрашиваем имя, email или телефон — только никнейм и город. Контакт для связи видит только ваш соперник и только до конца матча, потом он удаляется. Пароли хранятся в зашифрованном виде.</p>
+      <p><b>Уведомления</b> приходят в приложении и, если хотите, в Telegram через бота @podachafitbot.</p>
+      <div class="ex">
+        <p style="margin-bottom:8px"><b>Связаться с нами</b> — идеи, ошибки, вопросы:</p>
+        <p class="code" id="about-mail" style="font-size:1.05rem;padding:12px;margin-bottom:10px">${CONTACT_EMAIL}</p>
+        <div class="pair2"><button class="btn alt sm" data-a="copy-mail">Скопировать</button><a class="btn main sm" href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Подача FIT')}">Написать</a></div>
+      </div>
+      <p class="fine" style="text-align:center">podacha.fit · ${new Date().getFullYear()}</p>
+    </div>`);
 }
 function openNudge(){
   sheet(`<div class="nudge">
@@ -1159,6 +1181,10 @@ document.addEventListener('click', e => {
     case 'rk': S.rankAll = b === 'all'; render(); break;
     case 'notes': openNotes(); break;
     case 'edit-prof': openEdit(); break;
+    case 'about': openAbout(); break;
+    case 'copy-mail': { const t = CONTACT_EMAIL;
+      (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast('Почта скопирована'), () => { const r = document.createRange(); r.selectNodeContents($('#about-mail')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Выделено — скопируйте вручную'); });
+      break; }
     case 'pass': openPass(); break;
     case 'pass-save': {
       const o = $('#pw-old').value, n = $('#pw-new').value, n2 = $('#pw-new2').value, err = t => $('#pw-err').textContent = t;
@@ -1183,7 +1209,7 @@ document.addEventListener('click', e => {
     case 'nudge-later': nudgeSeen(); close(); break;
     case 'tgsw': { S.tg[b] = !S.tg[b]; paintTg(); api('/api/tg/prefs', { city: S.tg.city, mine: S.tg.mine }).catch(ex => { S.tg[b] = !S.tg[b]; paintTg(); toast(ex.message); }); break; }
     case 'tg-off': api('/api/tg/unlink', {}).then(() => { S.tg.linked = false; S.tg.pending = false; paintTg(); toast('Telegram отключён'); }).catch(ex => toast(ex.message)); break;
-    case 'note': close(); S.view = b; render(); break;
+    case 'note': close(); S.notesShown = null; S.view = b; render(); break;
     case 'perm': try { Notification.requestPermission().then(() => drawNotes()); } catch(e){} break;
     case 'rules': openRules(); break;
     case 'ava': openAva(false); break;
