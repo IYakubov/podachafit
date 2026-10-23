@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1D4E9E">
 <meta name="description" content="Подача — находи соперников по настольному теннису, бросай вызовы и поднимайся в рейтинге.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Podacha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,7 +35,8 @@ h1,h2{font-family:var(--f-big);margin:0;line-height:1.05;letter-spacing:-.01em;t
 p{margin:0}
 .num{font-variant-numeric:tabular-nums}
 
-#app{height:100%;display:flex;position:relative;z-index:1}
+/* pinned to the visible screen: works the same in Safari, Chrome and in-app browsers, whatever their toolbars do */
+#app{position:fixed;inset:0;display:flex;z-index:1;overflow:hidden}
 @media (max-width:899px){body.in::after{bottom:calc(80px + env(safe-area-inset-bottom,0px))}}
 /* table lines: white edge + centre line, like a real table seen from above */
 body::after{content:"";position:fixed;inset:max(12px,env(safe-area-inset-top,0px)) 12px 12px;border:3px solid var(--line-w);border-radius:4px;pointer-events:none;z-index:0;background:linear-gradient(to right,transparent calc(50% - 1.5px),var(--line-w) calc(50% - 1.5px),var(--line-w) calc(50% + 1.5px),transparent calc(50% + 1.5px))}
@@ -53,8 +54,8 @@ body::after{content:"";position:fixed;inset:max(12px,env(safe-area-inset-top,0px
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 
 /* ---------- auth ---------- */
-.auth{flex:1;display:grid;grid-template-rows:1fr auto;height:100%}
-.auth-top{color:var(--on-bg);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-block:40px 8px;padding-left:max(32px,env(safe-area-inset-left,0px));padding-right:max(32px,env(safe-area-inset-right,0px))}
+.auth{flex:1;display:grid;grid-template-rows:1fr auto;min-height:0;overflow-y:auto}
+.auth-top{color:var(--on-bg);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-top:calc(40px + env(safe-area-inset-top,0px));padding-bottom:8px;padding-left:max(32px,env(safe-area-inset-left,0px));padding-right:max(32px,env(safe-area-inset-right,0px))}
 .auth-top>*{position:relative}
 .logo{display:flex;align-items:baseline;margin-bottom:6px;font-family:var(--f-big);font-weight:800;font-size:1.3rem;letter-spacing:-.01em}
 .logo .dot{width:.42em;height:.42em;margin:0 .1em;box-shadow:inset -.08em -.08em 0 rgba(0,0,0,.18);align-self:baseline}
@@ -79,10 +80,10 @@ select.input:invalid{color:var(--muted)}
 
 /* ---------- shell ---------- */
 .rail{display:none}
-.screen{flex:1;display:flex;flex-direction:column;min-width:0;height:100%}
-.view{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;padding-block:32px 28px;padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(30px,env(safe-area-inset-right,0px));width:100%;max-width:1100px;margin:0 auto;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.screen{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.view{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;padding-top:calc(32px + env(safe-area-inset-top,0px));padding-bottom:28px;padding-left:max(30px,env(safe-area-inset-left,0px));padding-right:max(30px,env(safe-area-inset-right,0px));width:100%;max-width:1100px;margin:0 auto;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .view>*{flex-shrink:0}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.tabs{flex:none;display:grid;grid-template-columns:repeat(4,1fr);background:var(--navy);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .tabs button{border:0;background:none;height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--on-bg-2);font-weight:700;font-size:.78rem;position:relative}
 .tabs button svg{width:26px;height:26px}
 .tabs button[aria-current]{color:var(--on-bg)}
@@ -105,7 +106,8 @@ select.input:invalid{color:var(--muted)}
 .sec-title{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px}
 .sec-title h2{font-size:1.25rem;font-weight:700}
 .sec-title button{border:0;background:none;color:var(--on-bg);font-weight:800;font-size:1rem}
-.list{display:flex;flex-direction:column;gap:10px;min-height:0}
+.list{display:flex;flex-direction:column;gap:10px}
+.list>*,.board>*{flex-shrink:0}
 .item{display:flex;align-items:center;gap:14px;background:var(--card);color:var(--ink);border-radius:20px;padding:13px 14px;min-height:78px}
 .item.hot{box-shadow:inset 0 0 0 2.5px var(--ball)}
 .av svg{width:100%;height:100%;display:block}
@@ -146,6 +148,7 @@ select.input:invalid{color:var(--muted)}
 .prof{display:flex;align-items:center;gap:20px;min-width:0}
 .prof>div{min-width:0}
 .prof h1{overflow-wrap:anywhere;margin-bottom:6px}
+.prof h1.long{font-size:clamp(1.25rem,5.4vw,1.7rem)}
 .prof .av{width:84px;height:84px;font-size:1.7rem}
 .prof h1{font-size:clamp(1.6rem,6vw,2.2rem)}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
@@ -313,7 +316,7 @@ select.input:invalid{color:var(--muted)}
   .scrim{align-items:center}
   .sheet{border-radius:30px}
 }
-@media (max-width:899px){ .split{display:contents} .split>div{display:contents} }
+@media (max-width:899px){ .split{display:contents} .split>div{display:contents} .split>div>*{flex-shrink:0} }
 </style>
 
 </head>
@@ -778,7 +781,7 @@ function vMe(){
   const form = games.slice(0, 5).map(m => m.winner === db.me ? 'W' : 'L');
   const pct = p.w + p.l ? Math.round(p.w / (p.w + p.l) * 100) : 0;
   return `
-  <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p><button class="edit-btn" data-a="edit-prof">Изменить профиль</button></div></div>
+  <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1${p.name.length > 10 ? ' class="long"' : ''}>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p><button class="edit-btn" data-a="edit-prof">Изменить профиль</button></div></div>
   <div class="stats">
     <div class="stat"><b class="num"${rated(p) ? '' : ' style="font-size:1.4rem"'}>${rated(p) ? p.rating : '—'}</b><span>${rated(p) ? 'рейтинг' : 'нет рейтинга'}</span></div>
     <div class="stat"><b class="win num">${p.w}</b><span>победы</span></div>
@@ -839,7 +842,8 @@ function openEdit(){
       <select class="input" id="e-city">${CITIES.map(c => `<option${c === p.city ? ' selected' : ''}>${c}</option>`).join('')}</select>
       <p class="fine">Вызовы и уведомления в Telegram будут приходить из нового города.</p></div>
     <p class="err" id="e-err"></p>
-    <button class="btn main" data-a="save-prof" id="e-save">Сохранить</button>`);
+    <button class="btn main" data-a="save-prof" id="e-save">Сохранить</button>
+    <button class="btn alt" data-a="pass">Сменить пароль</button>`);
   let t;
   $('#e-nick').addEventListener('input', () => {
     const v = $('#e-nick').value.trim().replace(/^@/, ''), st = $('#e-nick-state');
@@ -852,6 +856,16 @@ function openEdit(){
       EP.ok = r.free; st.textContent = r.free ? '✓ Свободен' : r.error; st.className = 'nick-state ' + (r.free ? 'ok' : 'bad');
     }).catch(() => {}), 350);
   });
+}
+function openPass(){
+  close();
+  sheet(`${head('Сменить пароль')}
+    <div class="group"><label for="pw-old">Текущий пароль</label><input class="input" id="pw-old" type="password" autocomplete="current-password"></div>
+    <div class="group"><label for="pw-new">Новый пароль</label><input class="input" id="pw-new" type="password" autocomplete="new-password" placeholder="Минимум 6 символов"></div>
+    <div class="group"><label for="pw-new2">Новый пароль ещё раз</label><input class="input" id="pw-new2" type="password" autocomplete="new-password"></div>
+    <p class="fine">Не помните текущий пароль? Выйдите и нажмите «Забыли пароль?» — понадобится код восстановления.</p>
+    <p class="err" id="pw-err"></p>
+    <button class="btn main" data-a="pass-save">Сохранить пароль</button>`);
 }
 function openNudge(){
   sheet(`<div class="nudge">
@@ -1104,6 +1118,17 @@ document.addEventListener('click', e => {
     case 'rk': S.rankAll = b === 'all'; render(); break;
     case 'notes': openNotes(); break;
     case 'edit-prof': openEdit(); break;
+    case 'pass': openPass(); break;
+    case 'pass-save': {
+      const o = $('#pw-old').value, n = $('#pw-new').value, n2 = $('#pw-new2').value, err = t => $('#pw-err').textContent = t;
+      if (!o) { err('Введите текущий пароль'); return; }
+      if (n.length < 6) { err('Новый пароль — минимум 6 символов'); return; }
+      if (n !== n2) { err('Новые пароли не совпадают'); return; }
+      el.disabled = true;
+      api('/api/password', { old: o, pass: n }).then(() => { close(); toast('Пароль изменён'); })
+        .catch(ex => { err(ex.message); el.disabled = false; });
+      break;
+    }
     case 'save-prof': {
       const nick = $('#e-nick').value.trim().replace(/^@/, ''), city = $('#e-city').value, err = t => $('#e-err').textContent = t;
       if (!NICK_RE.test(nick)) { err('Никнейм: 3–16 символов, буквы, цифры или _'); return; }

@@ -305,6 +305,20 @@ app.post('/api/reset', wrap(async (req, res) => {
 
 app.post('/api/logout', (req, res) => { clearSession(res); res.json({ ok: true }); });
 
+/* ---- change password while logged in (current password required) ---- */
+app.post('/api/password', wrap(async (req, res) => {
+  const u = await must(req);
+  const old = String(req.body.old || ''), pass = String(req.body.pass || '');
+  if (tooMany('p:' + u.id)) bad('Слишком много попыток. Подождите 15 минут', 429);
+  if (!(await bcrypt.compare(old, u.pass_hash))) { failed('p:' + u.id); bad('Текущий пароль неверный'); }
+  if (pass.length < 6 || pass.length > 100) bad('Новый пароль — минимум 6 символов');
+  fails.delete('p:' + u.id);
+  // signs out every other device; this one gets a fresh session
+  const r = await q('UPDATE users SET pass_hash=$2, session_ver=session_ver+1 WHERE id=$1 RETURNING session_ver', [u.id, await bcrypt.hash(pass, 10)]);
+  setSession(res, u.id, r.rows[0].session_ver);
+  res.json({ ok: true });
+}));
+
 /* ---- profile: nickname and city can be changed ---- */
 function nickProblem(nick){
   if (!NICK_RE.test(nick)) return 'Никнейм: 3–16 символов, буквы, цифры или _';
