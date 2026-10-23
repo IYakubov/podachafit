@@ -539,11 +539,30 @@ function contactBlock(ct){
 const NICK_RE = /^[A-Za-zА-Яа-яЁё0-9_]{3,16}$/;
 const RESERVED = ['admin', 'administrator', 'rally', 'podacha', 'podachafit', 'support', 'moderator', 'админ', 'модератор', 'поддержка'];
 
+/* ---------- Telegram Mini App ---------- */
+// Telegram opens the app with #tgWebAppData… in the address; everyone else never loads Telegram's script
+const IN_TG = /tgWebAppData|tgWebAppPlatform/.test(location.hash);
+let TGW = null, TG_SESSION = null;
+function loadTgScript(){
+  return new Promise(res => { const sc = document.createElement('script'); sc.src = 'https://telegram.org/js/telegram-web-app.js'; sc.onload = () => res(window.Telegram && window.Telegram.WebApp); sc.onerror = () => res(null); document.head.appendChild(sc); setTimeout(() => res(window.Telegram && window.Telegram.WebApp), 4000); });
+}
+function tgInitData(){ return TGW && TGW.initData ? TGW.initData : ''; }
+function tgBack(){
+  if (!TGW || !TGW.BackButton) return;
+  const show = !!document.querySelector('.scrim') || (!!db.me && S.view !== 'home');
+  try { show ? TGW.BackButton.show() : TGW.BackButton.hide(); } catch(e){}
+}
+function tgHaptic(kind){ try { if (!TGW || !TGW.HapticFeedback) return; kind === 'ok' ? TGW.HapticFeedback.notificationOccurred('success') : kind === 'err' ? TGW.HapticFeedback.notificationOccurred('error') : TGW.HapticFeedback.impactOccurred('light'); } catch(e){} }
+async function tgAutoLink(){ if (tgInitData()) { try { await api('/api/tg/webapp/link', { initData: tgInitData() }); if (S.tg) S.tg.linked = true; } catch(e){} } }
+
 /* ---------- server API ---------- */
 async function api(path, body){
   let r;
-  try { r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' }); }
+  const headers = body === undefined ? {} : { 'Content-Type': 'application/json' };
+  if (IN_TG){ headers['X-Pf-Tg'] = '1'; if (TG_SESSION) headers['X-Pf-Session'] = TG_SESSION; }
+  try { r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' }); }
   catch(e){ throw new Error('Нет связи с сервером. Проверьте интернет'); }
+  if (IN_TG && r.headers.get('X-Pf-Session')) TG_SESSION = r.headers.get('X-Pf-Session');
   const data = await r.json().catch(() => ({}));
   if (r.status === 401 && path === '/api/state'){ db.me = null; render(); }
   if (!r.ok) throw new Error(data.error || 'Что-то пошло не так');
@@ -654,6 +673,7 @@ function renderAuth(){
       ` : `
       <form id="af" class="field" style="gap:12px" novalidate>
         ${form}
+        ${IN_TG && mode !== 'reset' ? `<p class="fine on-bg">Войдите один раз — дальше Telegram будет открывать Подачу сразу.</p>` : ''}
         <p class="err" id="a-err"></p>
         <button class="btn main" type="submit">${mode === 'reg' ? 'Начать играть' : mode === 'login' ? 'Войти' : 'Сохранить пароль'}</button>
         <div class="auth-links">
@@ -677,17 +697,20 @@ function renderAuth(){
         if (pass.length < 6) return err('Пароль — минимум 6 символов');
         btn.disabled = true;
         const r = await api('/api/register', { nick, city, pass, ava: randAva() });
+        await tgAutoLink();
         S.view = 'home'; await load(); openCode(r.code); return;
       }
       if (mode === 'login'){
         btn.disabled = true;
         await api('/api/login', { nick, pass });
+        await tgAutoLink();
         S.view = 'home'; await load(); return;
       }
       const code = $('#a-code').value.trim().toUpperCase();
       if (pass.length < 6) return err('Пароль — минимум 6 символов');
       btn.disabled = true;
       const r = await api('/api/reset', { nick, code, pass });
+      await tgAutoLink();
       S.view = 'home'; await load(); openCode(r.code, true);
     } catch(ex){ err(ex.message); btn.disabled = false; }
   });
@@ -824,6 +847,7 @@ function render(){
     <nav class="rail"><div class="logo"><svg class="brand" viewBox="120 58 960 290" role="img" aria-label="Подача FIT"><defs><linearGradient id="pd-lime2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#EE5A12"/></linearGradient></defs><text x="600" y="204" text-anchor="middle" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="900" font-style="italic" letter-spacing="-8" textLength="940" lengthAdjust="spacingAndGlyphs">Подача</text><g fill="url(#pd-lime2)"><path d="M190 269 L525 239 L545 239 L522 251 L190 278 Q177 278 190 269Z"/><path d="M260 291 L518 270 L532 270 L515 280 L260 298 Q248 298 260 291Z"/><path d="M350 310 L520 299 L533 299 L517 307 L350 316 Q340 316 350 310Z"/></g><circle cx="574" cy="278" r="43" fill="url(#pd-lime2)"/><path d="M574 236 C592 249 599 266 592 282 C586 296 577 309 574 320" fill="none" stroke="#5A2205" stroke-width="4" stroke-linecap="round" opacity=".85"/><text x="635" y="335" fill="url(#pd-lime2)" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4">FIT</text></svg></div>${tabs}<button class="btn main" data-a="new">${I.plus}Вызов</button></nav>
     <div class="screen"><main class="view"><div class="court">${view}</div></main><nav class="tabs">${tabs}</nav></div>`;
   if (S.view === 'me') drawTg();
+  tgBack();
 }
 /* ---------- Telegram alerts ---------- */
 /* remind players who haven't connected the bot; never shown once they are connected */
@@ -890,6 +914,7 @@ function openNudge(){
     <button class="btn link" data-a="nudge-later" style="color:var(--muted)">Позже</button>`);
 }
 function tgLink(el){
+  if (tgInitData()){ if (el) el.disabled = true; return tgAutoLink().then(() => { S.tg = Object.assign({}, S.tg, { linked: true }); paintTg(); toast('Telegram подключён'); tgHaptic('ok'); }); }
   if (el) el.disabled = true;
   return api('/api/tg/link', {}).then(r => {
     S.tg.pending = true; paintTg();
@@ -918,8 +943,8 @@ function paintTg(){
 
 /* ---------- sheets ---------- */
 let C;
-function sheet(html){ const open = document.querySelector('.scrim .sheet'); if (open){ const st = open.scrollTop; open.innerHTML = html; open.scrollTop = st; return; } document.body.insertAdjacentHTML('beforeend', `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`); }
-const close = () => { if (document.querySelector('.scrim .nudge') && db.me) nudgeSeen(); document.querySelector('.scrim')?.remove(); };
+function sheet(html){ setTimeout(tgBack, 0); const open = document.querySelector('.scrim .sheet'); if (open){ const st = open.scrollTop; open.innerHTML = html; open.scrollTop = st; return; } document.body.insertAdjacentHTML('beforeend', `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`); }
+const close = () => { if (document.querySelector('.scrim .nudge') && db.me) nudgeSeen(); document.querySelector('.scrim')?.remove(); setTimeout(tgBack, 0); };
 const head = t => `<div class="sheet-head"><h2>${t}</h2><button class="x" data-a="close" aria-label="Закрыть">${I.x}</button></div>`;
 
 function openNew(){
@@ -1070,7 +1095,10 @@ function toast(t){ document.querySelector('.toast')?.remove(); const el = docume
 /* ---------- actions ---------- */
 document.addEventListener('click', e => {
   if (e.target.classList.contains('scrim')) { close(); return; }
+  const tl = IN_TG && TGW && e.target.closest('a[href^="https://t.me/"]');
+  if (tl){ e.preventDefault(); try { TGW.openTelegramLink(tl.href); } catch(x){ location.href = tl.href; } return; }
   const el = e.target.closest('[data-a]'); if (!el) return;
+  if (el.classList.contains('main')) tgHaptic();
   const [a, b, c] = el.dataset.a.split(':');
   const m = b ? db.matches.find(x => x.id === b) : null;
   switch (a){
@@ -1177,7 +1205,24 @@ setInterval(() => {
   if (!typing) load().catch(() => {});
 }, 5000);
 document.addEventListener('visibilitychange', () => { if (db.me && document.visibilityState === 'visible') load().catch(() => {}); });
-api('/api/me').then(r => r.me ? load() : render()).catch(() => render());
+async function boot(){
+  if (IN_TG){
+    TGW = await loadTgScript();
+    if (TGW){
+      try { TGW.ready(); TGW.expand(); } catch(e){}
+      try { TGW.setHeaderColor('#1D4E9E'); TGW.setBackgroundColor('#1D4E9E'); if (TGW.setBottomBarColor) TGW.setBottomBarColor('#0E2757'); } catch(e){}
+      try { if (TGW.disableVerticalSwipes) TGW.disableVerticalSwipes(); } catch(e){}
+      try { TGW.BackButton.onClick(() => { if (document.querySelector('.scrim')) close(); else { S.view = 'home'; render(); } }); } catch(e){}
+      document.body.classList.add('in-tg');
+      if (tgInitData()){
+        try { const r = await api('/api/tg/webapp', { initData: tgInitData() }); if (r.linked){ await load(); return; } } catch(e){}
+      }
+    }
+  }
+  try { const r = await api('/api/me'); if (r.me){ await load(); if (IN_TG && S.tg && !S.tg.linked) tgAutoLink().then(load).catch(() => {}); return; } } catch(e){}
+  render();
+}
+boot();
 })();
 </script>
 </body>

@@ -143,8 +143,10 @@ async function tgCall(method, body){
   } catch (e) { console.error('telegram:', method, e.message); return null; }
 }
 async function tgSend(chat, html, button){
+  // the button opens the app right inside Telegram (Mini App) when the address is https
+  const btn = button ? (/^https:/.test(APP_URL) ? { text: button, web_app: { url: APP_URL } } : { text: button, url: APP_URL }) : null;
   const r = await tgCall('sendMessage', { chat_id: chat, text: html, parse_mode: 'HTML', disable_web_page_preview: true,
-    reply_markup: button ? { inline_keyboard: [[{ text: button, url: APP_URL }]] } : undefined });
+    reply_markup: btn ? { inline_keyboard: [[btn]] } : undefined });
   // the player blocked the bot or deleted the chat: stop messaging them
   if (r && !r.ok && (r.error_code === 403 || /chat not found/i.test(r.description || ''))) await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
   return r;
@@ -194,6 +196,7 @@ async function tgSetup(){
     console.log('Telegram: @' + BOT_NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
   } else console.log('Telegram: @' + BOT_NAME + ' (no https APP_URL, webhook not set)');
   await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Подключить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
+  if (/^https:/.test(APP_URL)) await tgCall('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Играть', web_app: { url: APP_URL } } });
   await tgCall('setMyShortDescription', { short_description: 'Уведомления Подача FIT 🏓 Новые вызовы по настольному теннису в вашем городе и новости о ваших матчах. podacha.fit' });
   await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак подключить: откройте podacha.fit → Профиль → «Подключить Telegram» и нажмите «Start».\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
 }
@@ -211,7 +214,10 @@ function readToken(t){
 }
 function cookieOf(req){ const m = (req.headers.cookie || '').match(new RegExp(`(?:^|; )${COOKIE}=([^;]+)`)); return m ? decodeURIComponent(m[1]) : null; }
 function setSession(res, uid, ver){
-  res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(makeToken(uid, ver))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 60}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+  const tok = makeToken(uid, ver);
+  res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(tok)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 60}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+  // inside Telegram (Desktop/Web run the app in a frame, where cookies are blocked) the page keeps the session in memory
+  if (res.req && res.req.get('X-Pf-Tg') === '1') res.setHeader('X-Pf-Session', tok);
 }
 function clearSession(res){ res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`); }
 
@@ -235,7 +241,8 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('X-Frame-Options', 'DENY');
+  // only Telegram may show the site inside a frame (Mini App on Telegram Desktop / Web)
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org");
   next();
 });
 
@@ -246,7 +253,7 @@ const wrap = fn => (req, res) => fn(req, res).catch(e => {
 const bad = (msg, status = 400) => { const e = new Error(msg); e.status = status; throw e; };
 
 async function auth(req){
-  const t = readToken(cookieOf(req)); if (!t) return null;
+  const t = readToken(cookieOf(req) || req.get('X-Pf-Session')); if (!t) return null;
   const r = await q('SELECT * FROM users WHERE id = $1', [t.uid]);
   const u = r.rows[0]; if (!u || u.session_ver !== t.ver) return null;
   return u;
@@ -352,6 +359,38 @@ app.post('/api/avatar', wrap(async (req, res) => {
   if (fur && !FURS.includes(fur)) bad('Выберите цвет');
   const r = await q('UPDATE users SET ava_kind=$2, ava_fur=$3 WHERE id=$1 RETURNING *', [u.id, k, fur]);
   res.json({ me: pub(r.rows[0]) });
+}));
+
+/* ---- Telegram Mini App: sign in with the data Telegram signs for the page ---- */
+function tgWebAppUser(initData){
+  if (!TG || !initData) return null;
+  const params = new URLSearchParams(String(initData));
+  const hash = params.get('hash'); if (!hash) return null;
+  params.delete('hash');
+  const check = [...params.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${k}=${v}`).join('\n');
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(TG).digest();
+  const good = crypto.createHmac('sha256', secret).update(check).digest('hex');
+  if (good.length !== hash.length || !crypto.timingSafeEqual(Buffer.from(good), Buffer.from(hash))) return null;
+  if (Date.now() / 1000 - +params.get('auth_date') > 7 * 86400) return null;
+  try { const u = JSON.parse(params.get('user') || 'null'); return u && Number.isSafeInteger(u.id) ? u : null; } catch (e) { return null; }
+}
+app.post('/api/tg/webapp', wrap(async (req, res) => {
+  const tu = tgWebAppUser(req.body.initData);
+  if (!tu) bad('Не удалось проверить данные Telegram', 401);
+  const u = (await q('SELECT * FROM users WHERE tg_chat=$1', [tu.id])).rows[0];
+  if (!u) return res.json({ linked: false });
+  setSession(res, u.id, u.session_ver);
+  res.json({ linked: true, me: pub(u) });
+}));
+app.post('/api/tg/webapp/link', wrap(async (req, res) => {
+  const u = await must(req);
+  const tu = tgWebAppUser(req.body.initData);
+  if (!tu) bad('Не удалось проверить данные Telegram', 401);
+  await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1 AND id<>$2', [tu.id, u.id]);
+  const already = u.tg_chat && +u.tg_chat === tu.id;
+  await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1', [u.id, tu.id]);
+  if (!already) tgLater(() => tgSend(tu.id, `Готово, <b>${h(u.nick)}</b>! 🏓 Теперь вы входите в Подачу прямо из Telegram, а я пришлю новые вызовы в городе ${h(u.city)} и новости о ваших матчах.`));
+  res.json({ ok: true });
 }));
 
 /* ---- Telegram linking ---- */

@@ -13,6 +13,7 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
 - **Rating:** Elo-based (like German TTR and US USATT), calculated on the server only. Everyone starts at 1000 internally but is shown as "Новичок" until the first confirmed match. The winner gains the full Elo amount and the loser loses half (as in the Russian amateur RTTF rating). K = 48 for a player's first 10 matches, then 32. A convincing win counts more: 3:0 ×1.2, 3:1 ×1.07, 3:2 ×0.93.
 - **Notifications:** in-app notifications (bell with a counter) when someone challenges you, accepts or declines your challenge, cancels a match, enters a score, or confirms it. Optional browser notifications while the site is open in a tab.
 - **Telegram alerts (optional):** with `TELEGRAM_BOT_TOKEN` set, players can connect Telegram in their profile. The bot sends new open challenges in the player's city and news about their own matches; each can be switched off, and `/stop` disconnects. Only the numeric chat id is stored.
+- **Telegram Mini App:** the bot's menu button «Играть» opens the app inside Telegram. The server verifies Telegram's signed `initData` with the bot token and signs the player in automatically once their Telegram is linked; the first time, they log in or register and the account is linked. Back button, haptics and Telegram colours are used inside Telegram; normal visitors never load Telegram's script.
 - **Housekeeping:** challenges nobody played are cancelled 3 days after their planned time, and their contacts are wiped.
 
 ## Privacy
