@@ -305,6 +305,15 @@ select.input:invalid{color:var(--muted)}
 .seg button{flex:1;min-width:max-content;height:54px;border-radius:16px;border:2px solid var(--line);background:var(--card);font-weight:800;font-size:1rem;padding:0 14px}
 .seg button[aria-pressed="true"]{background:var(--ball);border-color:var(--ball);color:#FFFFFF}
 .picks{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.who-res{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.who-row,.who-sel{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:8px 12px;color:var(--ink)}
+.who-row{cursor:pointer}.who-row:active{transform:scale(.99)}
+.who-row .av,.who-sel .av{width:42px;height:42px}
+.who-row .txt,.who-sel .txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.who-row b,.who-sel b{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who-row small,.who-sel small{color:var(--muted);font-weight:600;font-size:.85rem}
+.who-sel{border-color:var(--ball);margin-top:8px}
+.who-hint,.who-none{color:var(--muted);font-weight:600;font-size:.9rem;margin-top:8px}
 .picks button{flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;width:80px;padding:8px 4px;border-radius:16px;border:2px solid transparent;background:none;font-weight:700;font-size:.85rem}
 .picks button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picks button[aria-pressed="true"]{border-color:var(--ball);background:var(--card)}
@@ -1038,18 +1047,33 @@ function sheet(html){ setTimeout(tgBack, 0); const open = document.querySelector
 const close = () => { if (document.querySelector('.scrim .nudge') && db.me) nudgeSeen(); document.querySelector('.scrim')?.remove(); setTimeout(tgBack, 0); };
 const head = t => `<div class="sheet-head"><h2>${t}</h2><button class="x" data-a="close" aria-label="Закрыть">${I.x}</button></div>`;
 
-function openNew(){
+function openNew(who){
   close();
-  C = { who: null, day: 1, hour: 18, min: 0, bo: 5, ct: savedContact() };
+  C = { who: who || null, mode: who ? 'one' : 'all', q: '', day: 1, hour: 18, min: 0, bo: 5, ct: savedContact() };
   drawNew();
 }
+/* players matching what is typed (nickname, then city); with nothing typed — players closest to my level */
+function whoResults(q){
+  q = (q || '').trim().replace(/^@/, '').toLowerCase();
+  const mine = me(), others = db.players.filter(p => p.id !== db.me);
+  let list;
+  if (!q) list = others.slice().sort((a, b) => (a.city === mine.city ? 0 : 1) - (b.city === mine.city ? 0 : 1) || Math.abs(a.rating - mine.rating) - Math.abs(b.rating - mine.rating)).slice(0, 5);
+  else list = others.map(p => { const n = p.name.toLowerCase(), c = (p.city || '').toLowerCase();
+      return { p, r: n.startsWith(q) ? 0 : n.includes(q) ? 1 : c.startsWith(q) ? 2 : 9 }; })
+    .filter(x => x.r < 9).sort((a, b) => a.r - b.r || a.p.name.length - b.p.name.length).slice(0, 8).map(x => x.p);
+  if (!list.length) return `<p class="who-none">Игрок «${esc(q)}» не найден. Проверьте никнейм.</p>`;
+  return (q ? '' : '<p class="who-hint">Похожий уровень:</p>') + list.map(p => `<button class="who-row" data-a="who:${p.id}">${av(p)}<span class="txt"><b>${esc(p.name)}</b><small>${esc(p.city || '')}${p.city ? ' · ' : ''}${esc(ratingText(p))}</small></span></button>`).join('');
+}
 function drawNew(){
-  const opps = db.players.filter(p => p.id !== db.me).sort((a, b) => Math.abs(a.rating - me().rating) - Math.abs(b.rating - me().rating));
+  const sel = C.who ? P(C.who) : null;
   sheet(`${head('Новый вызов')}
-    <div class="group"><label>Кому</label><div class="picks">
-      <button data-a="who:" aria-pressed="${C.who === null}"><span class="av" style="--h:22">Все</span><span>Любому</span></button>
-      ${opps.map(p => `<button data-a="who:${p.id}" aria-pressed="${C.who === p.id}">${av(p)}<span>${esc(first(p))}</span></button>`).join('')}
-    </div></div>
+    <div class="group"><label>Кому</label>
+      <div class="seg"><button data-a="whomode:all" aria-pressed="${C.mode !== 'one'}">Любому игроку</button><button data-a="whomode:one" aria-pressed="${C.mode === 'one'}">Конкретному</button></div>
+      ${C.mode !== 'one' ? '<p class="who-hint">Вызов увидят все игроки — примет первый, кто захочет.</p>'
+        : sel ? `<div class="who-sel">${av(sel)}<span class="txt"><b>${esc(sel.name)}</b><small>${esc(sel.city || '')}${sel.city ? ' · ' : ''}${esc(ratingText(sel))}</small></span><button class="btn alt sm" data-a="who-clear">Изменить</button></div>`
+        : `<input class="input" id="who-q" placeholder="Начните вводить никнейм" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(C.q || '')}">
+           <div class="who-res" id="who-res">${whoResults(C.q)}</div>`}
+    </div>
     <div class="group"><label>Когда</label>
       <p class="when-sum" id="when-sum"></p>
       <div class="wheels">
@@ -1122,7 +1146,7 @@ function drawAva(){
     <div class="group"><label>Цвет · ${ANIMALS[A.k].n}</label><div class="dots">${FURS.map((c, i) => `<button data-a="afur:${i}" aria-pressed="${A.fur === c}" style="background:${c || ANIMALS[A.k].fur}" aria-label="${c ? 'Цвет ' + i : 'Натуральный'}" title="${c ? '' : 'Натуральный'}"></button>`).join('')}</div></div>
     <button class="btn main" data-a="ava-save">Сохранить</button>`);
 }
-function keepNew(){ C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
+function keepNew(){ if ($('#who-q')) C.q = $('#who-q').value; C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function dueText(m){
   if (!m.due) return 'завтра';
   const d = new Date(m.due), now = new Date();
@@ -1239,6 +1263,10 @@ function openRules(){
 function toast(t){ document.querySelector('.toast')?.remove(); const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 2600); }
 
 /* ---------- actions ---------- */
+// live player search in «Новый вызов»: only the results list is redrawn, so the keyboard stays open
+document.addEventListener('input', e => {
+  if (e.target && e.target.id === 'who-q') { C.q = e.target.value; const r = $('#who-res'); if (r) r.innerHTML = whoResults(C.q); }
+});
 document.addEventListener('click', e => {
   if (e.target.classList.contains('scrim')) { close(); return; }
   const tl = IN_TG && TGW && e.target.closest('a[href^="https://t.me/"]');
@@ -1252,12 +1280,15 @@ document.addEventListener('click', e => {
     case 'go': S.view = b; render(); break;
     case 'close': close(); break;
     case 'new': openNew(); break;
-    case 'who': keepNew(); C.who = b || null; drawNew(); break;
+    case 'who': keepNew(); C.who = b || null; C.mode = b ? 'one' : 'all'; drawNew(); break;
+    case 'whomode': keepNew(); C.mode = b; if (b === 'all') C.who = null; drawNew(); if (b === 'one' && !C.who) setTimeout(() => $('#who-q')?.focus(), 30); break;
+    case 'who-clear': keepNew(); C.who = null; C.q = ''; drawNew(); setTimeout(() => $('#who-q')?.focus(), 30); break;
     case 'day': keepNew(); C.day = +b; drawNew(); break;
     case 'hour': keepNew(); C.hour = +b; drawNew(); break;
     case 'bo': keepNew(); C.bo = +b; drawNew(); break;
     case 'send': {
       const place = $('#n-place').value.trim(), nerr = t => $('#n-err').textContent = t;
+      if (C.mode === 'one' && !C.who) { nerr('Выберите игрока, которому бросаете вызов'); $('#who-q')?.focus(); return; }
       if (!place) { nerr('Укажите, где играем'); return; }
       if (hasContactInText(place)) { nerr('В поле «Где» нельзя писать контакты — для них есть отдельное поле'); return; }
       const cv = normContact(C.ct.type, $('#c-val').value);
