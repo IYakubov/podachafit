@@ -194,6 +194,8 @@ async function tgSetup(){
     console.log('Telegram: @' + BOT_NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
   } else console.log('Telegram: @' + BOT_NAME + ' (no https APP_URL, webhook not set)');
   await tgCall('setMyCommands', { commands: [{ command: 'start', description: 'Подключить уведомления' }, { command: 'stop', description: 'Отключить уведомления' }] });
+  await tgCall('setMyShortDescription', { short_description: 'Уведомления Подача FIT 🏓 Новые вызовы по настольному теннису в вашем городе и новости о ваших матчах. podacha.fit' });
+  await tgCall('setMyDescription', { description: '🏓 Подача FIT — найди соперника по настольному теннису.\n\nЭтот бот присылает:\n• новые вызовы в вашем городе\n• вызовы лично вам\n• принятые и отменённые матчи\n• счёт, который нужно подтвердить, и изменения рейтинга\n\nКак подключить: откройте podacha.fit → Профиль → «Подключить Telegram» и нажмите «Start».\n\nБот не знает ваше имя и номер телефона. Отключить уведомления можно в профиле или командой /stop.' });
 }
 
 /* ---------------- sessions: signed cookie, no session table ---------------- */
