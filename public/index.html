@@ -606,7 +606,7 @@ async function api(path, body){
   let r;
   const headers = body === undefined ? {} : { 'Content-Type': 'application/json' };
   if (IN_TG){ headers['X-Pf-Tg'] = '1'; if (TG_SESSION) headers['X-Pf-Session'] = TG_SESSION; }
-  try { r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' }); }
+  try { r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', cache: 'no-store' }); }
   catch(e){ throw new Error('Нет связи с сервером. Проверьте интернет'); }
   if (IN_TG && r.headers.get('X-Pf-Session')) TG_SESSION = r.headers.get('X-Pf-Session');
   const data = await r.json().catch(() => ({}));
@@ -1349,22 +1349,33 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
-/* keep the screen fresh: new challenges, accepted invites, confirmed scores */
-let lastPoll = 0;
+/* keep the screen fresh: every few seconds ask the server for a tiny "stamp" of my data and reload only when it changed */
+let lastPoll = 0, stamp = null, polling = false;
+async function refresh(force){
+  if (!db.me || polling) return;
+  polling = true; lastPoll = Date.now();
+  try {
+    const r = await api('/api/stamp');
+    const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if ((force || (stamp !== null && r.s !== stamp)) && !typing) await load();
+    if (!typing) stamp = r.s;
+  } catch (e) {} finally { polling = false; }
+}
 setInterval(() => {
-  if (!db.me) return;
-  const gap = document.visibilityState === 'visible' ? 20000 : 60000;
-  if (Date.now() - lastPoll < gap) return;
-  lastPoll = Date.now();
-  const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
-  if (!typing) load().catch(() => {});
-}, 5000);
-document.addEventListener('visibilitychange', () => { if (db.me && document.visibilityState === 'visible') load().catch(() => {}); });
+  const gap = document.visibilityState === 'visible' ? 5000 : 60000;
+  if (Date.now() - lastPoll >= gap) refresh(false);
+}, 1000);
+const wake = () => { if (document.visibilityState !== 'hidden') refresh(true); };
+document.addEventListener('visibilitychange', wake);
+window.addEventListener('focus', wake);
+window.addEventListener('pageshow', wake);
+window.addEventListener('online', wake);
 async function boot(){
   if (IN_TG){
     TGW = await loadTgScript();
     if (TGW){
       try { TGW.ready(); TGW.expand(); } catch(e){}
+      try { TGW.onEvent('activated', () => refresh(true)); } catch(e){}
       try { TGW.setHeaderColor('#1D4E9E'); TGW.setBackgroundColor('#1D4E9E'); if (TGW.setBottomBarColor) TGW.setBottomBarColor('#0E2757'); } catch(e){}
       try { if (TGW.disableVerticalSwipes) TGW.disableVerticalSwipes(); } catch(e){}
       try { TGW.BackButton.onClick(() => { if (document.querySelector('.scrim')) close(); else { S.view = 'home'; render(); } }); } catch(e){}

@@ -248,6 +248,8 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   // only Telegram may show the site inside a frame (Mini App on Telegram Desktop / Web)
   res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org");
+  // API answers are personal and change all the time: never let a browser or Telegram's webview reuse an old one
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   next();
 });
 
@@ -447,6 +449,17 @@ app.post('/tg/:hook', wrap(async (req, res) => {
 }));
 
 /* ---- everything the app shows, in one request ---- */
+// tiny "has anything changed?" check, polled every few seconds; the app reloads /api/state only when it changes
+app.get('/api/stamp', wrap(async (req, res) => {
+  const u = await must(req);
+  const r = (await q(`SELECT
+      (SELECT coalesce(max(extract(epoch FROM updated_at)), 0) || ':' || count(*) FROM matches
+         WHERE (status = 'open' AND when_at > now() - interval '3 hours') OR a = $1 OR b = $1) AS m,
+      (SELECT coalesce(max(id), 0) || ':' || count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL) AS n,
+      (SELECT count(*) || ':' || coalesce(sum(rating), 0) FROM users) AS u`, [u.id])).rows[0];
+  res.json({ s: `${r.m}|${r.n}|${r.u}` });
+}));
+
 app.get('/api/state', wrap(async (req, res) => {
   const u = await must(req);
   const players = (await q('SELECT * FROM users ORDER BY rating DESC LIMIT 2000')).rows.map(pub);
