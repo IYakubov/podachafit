@@ -591,7 +591,20 @@ function contactBlock(ct){
     <input class="input" id="c-val" value="${esc(ct.val)}" placeholder="${ct.type === 'tg' ? '@username' : '+998 90 123 45 67'}" ${ct.type === 'ph' ? 'inputmode="tel"' : 'autocapitalize="off"'} autocomplete="off" aria-label="Контакт">
     <p class="fine">Увидит только соперник, когда вызов будет принят. После матча контакт удаляется.</p></div>`;
 }
-const NICK_RE = /^[A-Za-zА-Яа-яЁё0-9_]{3,16}$/;
+// nicknames: 3–16 characters, at least one letter; letters, digits and common symbols in any order
+const NICK_LETTER = /[A-Za-zА-Яа-яЁё]/;
+const NICK_OK = /^[A-Za-zА-Яа-яЁё0-9_.\-+!#$%&*=~^?()\[\]]+$/;
+function nickError(n){
+  n = String(n || '');
+  if (n.length < 3) return 'Никнейм: минимум 3 символа';
+  if (n.length > 16) return 'Никнейм: не больше 16 символов';
+  if (!NICK_OK.test(n)) {
+    const bad = [...n].find(ch => !NICK_OK.test(ch));
+    return bad === ' ' ? 'В никнейме не должно быть пробелов' : `Символ «${bad}» нельзя использовать в никнейме`;
+  }
+  if (!NICK_LETTER.test(n)) return 'Никнейм должен содержать хотя бы одну букву';
+  return null;
+}
 const RESERVED = ['admin', 'administrator', 'rally', 'podacha', 'podachafit', 'support', 'moderator', 'админ', 'модератор', 'поддержка'];
 
 /* ---------- Telegram Mini App ---------- */
@@ -750,7 +763,7 @@ function renderAuth(){
     const btn = f.querySelector('[type=submit]');
     try {
       if (mode === 'reg'){
-        if (!NICK_RE.test(nick)) return err('Никнейм: 3–16 символов, буквы, цифры или _');
+        { const ne = nickError(nick); if (ne) return err(ne); }
         if (RESERVED.includes(nick.toLowerCase())) return err('Этот никнейм уже существует. Выберите другой');
         const city = $('#a-city').value;
         if (!city) return err('Выберите город');
@@ -969,7 +982,7 @@ function openEdit(){
     const v = $('#e-nick').value.trim().replace(/^@/, ''), st = $('#e-nick-state');
     EP.ok = false; clearTimeout(t);
     if (v.toLowerCase() === me().name.toLowerCase()){ st.textContent = ''; st.className = 'nick-state'; EP.ok = true; return; }
-    if (!NICK_RE.test(v)){ st.textContent = '3–16 символов: буквы, цифры или _'; st.className = 'nick-state bad'; return; }
+    { const ne = nickError(v); if (ne){ st.textContent = ne; st.className = 'nick-state bad'; return; } }
     st.textContent = 'Проверяем…'; st.className = 'nick-state';
     t = setTimeout(() => api('/api/nick?n=' + encodeURIComponent(v)).then(r => {
       if ($('#e-nick').value.trim().replace(/^@/, '') !== v) return;
@@ -1358,7 +1371,7 @@ document.addEventListener('click', e => {
     }
     case 'save-prof': {
       const nick = $('#e-nick').value.trim().replace(/^@/, ''), city = $('#e-city').value, err = t => $('#e-err').textContent = t;
-      if (!NICK_RE.test(nick)) { err('Никнейм: 3–16 символов, буквы, цифры или _'); return; }
+      { const ne = nickError(nick); if (ne) { err(ne); return; } }
       el.disabled = true;
       api('/api/profile', { nick, city }).then(async () => { close(); await load(); toast('Профиль сохранён'); })
         .catch(ex => { err(ex.message); el.disabled = false; const st = $('#e-nick-state'); if (st && /никнейм/i.test(ex.message)){ st.textContent = ex.message; st.className = 'nick-state bad'; } });

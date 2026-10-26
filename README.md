@@ -6,7 +6,7 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
 
 ## How it works
 
-- **Accounts:** a nickname, a city and a password. No email, phone or real name. At sign-up the player gets a one-time recovery code (`PDCH-XXXX-XXXX`) to reset a forgotten password.
+- **Accounts:** a nickname, a city and a password. Nicknames are 3–16 characters with at least one letter (Latin or Cyrillic); digits and the symbols `_ . - + ! # $ % & * = ~ ^ ? ( ) [ ]` may go anywhere; no spaces or `< > " ' \` \ / @`. No email, phone or real name. At sign-up the player gets a one-time recovery code (`PDCH-XXXX-XXXX`) to reset a forgotten password.
 - **Challenges:** open to anyone or sent to a specific player, with a day, time, place and format (to 2 or 3 wins).
 - **Challenge details:** tapping a challenge opens who is calling (nickname, city, rating, record, last 5 results), the full date and time, the venue, the format and who it is for. The caller's contact is not sent to the app until you accept.
 - **Contacts:** whoever creates or accepts a challenge enters a Telegram username or phone number. Only the opponent sees it, only after the challenge is accepted, and it is deleted when the match is finished, cancelled or expires.

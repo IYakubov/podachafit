@@ -32,7 +32,20 @@ const q = (text, params) => pool.query(text, params);
 const CITIES = ['Ташкент','Самарканд','Бухара','Андижан','Наманган','Фергана','Нукус','Карши','Коканд','Термез','Джизак','Ургенч','Навои','Гулистан'];
 const KINDS = ['wolf','fox','tiger','lion','bear','panda','eagle','panther','bull','raccoon','owl','boar'];
 const FURS = ['#E0742E','#D8A63C','#B84A3E','#C76A9A','#7A5CC9','#3D78C9','#2E9C8E','#5C9E48','#3A3D46'];
-const NICK_RE = /^[A-Za-zА-Яа-яЁё0-9_]{3,16}$/;
+// nicknames: 3–16 characters, at least one letter; letters, digits and common symbols in any order
+const NICK_LETTER = /[A-Za-zА-Яа-яЁё]/;
+const NICK_OK = /^[A-Za-zА-Яа-яЁё0-9_.\-+!#$%&*=~^?()\[\]]+$/;
+function nickError(n){
+  n = String(n || '');
+  if (n.length < 3) return 'Никнейм: минимум 3 символа';
+  if (n.length > 16) return 'Никнейм: не больше 16 символов';
+  if (!NICK_OK.test(n)) {
+    const bad = [...n].find(ch => !NICK_OK.test(ch));
+    return bad === ' ' ? 'В никнейме не должно быть пробелов' : `Символ «${bad}» нельзя использовать в никнейме`;
+  }
+  if (!NICK_LETTER.test(n)) return 'Никнейм должен содержать хотя бы одну букву';
+  return null;
+}
 const RESERVED = ['admin','administrator','rally','podacha','podachafit','support','moderator','админ','модератор','поддержка'];
 const need = bo => Math.floor(bo / 2) + 1;
 const okScore = (bo, a, b) => { const n = need(bo); return (a === n && b >= 0 && b < n) || (b === n && a >= 0 && a < n); };
@@ -285,7 +298,7 @@ app.get('/api/me', wrap(async (req, res) => { const u = await auth(req); res.jso
 
 app.post('/api/register', wrap(async (req, res) => {
   const nick = String(req.body.nick || '').trim().replace(/^@/, ''), city = String(req.body.city || ''), pass = String(req.body.pass || '');
-  if (!NICK_RE.test(nick)) bad('Никнейм: 3–16 символов, буквы, цифры или _');
+  { const ne = nickError(nick); if (ne) bad(ne); }
   if (RESERVED.includes(nick.toLowerCase())) bad('Этот никнейм уже существует. Выберите другой');
   if (!CITIES.includes(city)) bad('Выберите город');
   if (pass.length < 6 || pass.length > 100) bad('Пароль — минимум 6 символов');
@@ -336,7 +349,7 @@ app.post('/api/password', wrap(async (req, res) => {
 
 /* ---- profile: nickname and city can be changed ---- */
 function nickProblem(nick){
-  if (!NICK_RE.test(nick)) return 'Никнейм: 3–16 символов, буквы, цифры или _';
+  { const ne = nickError(nick); if (ne) return ne; }
   if (RESERVED.includes(nick.toLowerCase())) return 'Этот никнейм уже существует. Выберите другой';
   return null;
 }
