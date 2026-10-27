@@ -76,6 +76,7 @@ function newCode(){ const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const g = () =
 
 /* ---------------- schema (created automatically on start) ---------------- */
 async function migrate(){
+  await CLUBS.migrate();
   await q(`
     CREATE EXTENSION IF NOT EXISTS pgcrypto;
     CREATE TABLE IF NOT EXISTS users (
@@ -270,6 +271,9 @@ const wrap = fn => (req, res) => fn(req, res).catch(e => {
   if (e.status) return res.status(e.status).json({ error: e.message });
   console.error(e.message); res.status(500).json({ error: 'Ошибка сервера. Попробуйте ещё раз.' });
 });
+// second bot: clubs ask to be listed under «Где»
+const CLUBS = require('./clubs')({ app, q, wrap, APP_URL, SECRET, CITIES });
+
 const bad = (msg, status = 400) => { const e = new Error(msg); e.status = status; throw e; };
 
 async function auth(req){
@@ -484,7 +488,8 @@ app.get('/api/state', wrap(async (req, res) => {
       WHERE user_id = $1 AND read_at IS NULL AND created_at > now() - interval '30 days' ORDER BY created_at DESC LIMIT 40`, [u.id])).rows
     .map(n => ({ id: +n.id, kind: n.kind, match: n.match_id, actor: n.actor, at: new Date(n.created_at).getTime(), read: !!n.read_at }));
   res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)), notes,
-    tg: { available: !!(TG && BOT_NAME), bot: BOT_NAME, linked: !!u.tg_chat, city: u.tg_city, mine: u.tg_mine } });
+    tg: { available: !!(TG && BOT_NAME), bot: BOT_NAME, linked: !!u.tg_chat, city: u.tg_city, mine: u.tg_mine },
+    clubs: await CLUBS.activeClubs(), clubsBot: CLUBS.botName() || null });
 }));
 
 app.post('/api/notifications/read', wrap(async (req, res) => {
@@ -656,5 +661,6 @@ async function adminDeletes(){
   await adminDeletes();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
+  CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
   app.listen(PORT, () => console.log(`podacha.fit listening on ${PORT}`));
 })();

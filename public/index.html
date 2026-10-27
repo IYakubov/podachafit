@@ -306,6 +306,14 @@ select.input:invalid{color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--ball);border-color:var(--ball);color:#FFFFFF}
 .picks{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .who-res{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.clubs-lbl{color:var(--muted);font-weight:700;font-size:.85rem;margin-top:12px}
+.clubs{display:flex;gap:8px;overflow-x:auto;padding:6px 0 4px;scrollbar-width:none}
+.club{flex:none;max-width:78%;display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:10px 14px;color:var(--ink);cursor:pointer}
+.club b{font-weight:800;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.club small{color:var(--muted);font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.club.on{border-color:var(--ball);box-shadow:inset 0 0 0 1.5px var(--ball)}
+.club.slot{border:2px dashed #F2A36F;background:var(--ball-soft)}.club.slot small{color:#B5470F}
+.club.slot:only-child{flex:1;max-width:100%}
 .who-row,.who-sel{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:8px 12px;color:var(--ink)}
 .who-row{cursor:pointer}.who-row:active{transform:scale(.99)}
 .who-row .av,.who-sel .av{width:42px;height:42px}
@@ -639,6 +647,7 @@ async function api(path, body){
 async function load(){
   const st = await api('/api/state');
   db.me = st.me.id; db.players = st.players; db.matches = st.matches; db.notes = st.notes || [];
+  db.clubs = st.clubs || []; S.clubsBot = st.clubsBot || null;
   if (st.tg) S.tg = Object.assign({}, S.tg, st.tg, { pending: S.tg && S.tg.pending && !st.tg.linked });
   if (!db.players.some(p => p.id === db.me)) db.players.push(st.me);
   announce();
@@ -1095,7 +1104,8 @@ function drawNew(){
         <span class="colon2">:</span>
         ${wheel('w-min', Array.from({ length: 60 }, (_, i) => pad2(i)), C.min)}
       </div></div>
-    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Спортзал, стол 3" value="${esc(C.place || '')}"></div>
+    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Спортзал, стол 3" value="${esc(C.place || '')}">
+      ${clubsBlock()}</div>
     <div class="group"><label>Игра</label><div class="seg">${[3, 5].map(b => `<button data-a="bo:${b}" aria-pressed="${C.bo === b}">До ${need(b)} побед</button>`).join('')}</div></div>
     ${contactBlock(C.ct)}
     <p class="err" id="n-err"></p>
@@ -1158,6 +1168,15 @@ function drawAva(){
     <div class="ava-grid">${KINDS.map(k => `<button data-a="ak:${k}" aria-pressed="${A.k === k}" aria-label="${ANIMALS[k].n}"><span class="av">${avatarSVG({ k, fur: null })}</span></button>`).join('')}</div>
     <div class="group"><label>Цвет · ${ANIMALS[A.k].n}</label><div class="dots">${FURS.map((c, i) => `<button data-a="afur:${i}" aria-pressed="${A.fur === c}" style="background:${c || ANIMALS[A.k].fur}" aria-label="${c ? 'Цвет ' + i : 'Натуральный'}" title="${c ? '' : 'Натуральный'}"></button>`).join('')}</div></div>
     <button class="btn main" data-a="ava-save">Сохранить</button>`);
+}
+/* clubs under «Где»: listed clubs of my city fill the field in one tap; the dashed slot invites owners to the clubs bot */
+function clubsBlock(){
+  const city = me().city, list = (db.clubs || []).filter(c => c.city === city);
+  if (!list.length && !S.clubsBot) return '';
+  return `<p class="clubs-lbl">Клубы рядом</p><div class="clubs">
+    ${list.map(c => `<button class="club" data-a="club:${c.id}"><b>${esc(c.name)}</b><small>${esc(c.address)}</small></button>`).join('')}
+    ${S.clubsBot ? `<button class="club slot" data-a="club-add"><b>🏓 Есть клуб или столы в аренду?</b><small>Добавьте адрес — игроки придут →</small></button>` : ''}
+  </div>`;
 }
 function keepNew(){ if ($('#who-q')) C.q = $('#who-q').value; C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function dueText(m){
@@ -1295,6 +1314,12 @@ document.addEventListener('click', e => {
     case 'new': openNew(); break;
     case 'who': keepNew(); C.who = b || null; C.mode = b ? 'one' : 'all'; drawNew(); break;
     case 'whomode': keepNew(); C.mode = b; if (b === 'all') C.who = null; drawNew(); if (b === 'one' && !C.who) setTimeout(() => $('#who-q')?.focus(), 30); break;
+    case 'club': { const c = (db.clubs || []).find(x => String(x.id) === b); if (c && $('#n-place')) { $('#n-place').value = `${c.name}, ${c.address}`; C.place = $('#n-place').value; document.querySelectorAll('.club').forEach(x => x.classList.toggle('on', x === el)); } break; }
+    case 'club-add': {
+      const url = `https://t.me/${S.clubsBot}?start=app`;
+      try { if (TGW && TGW.openTelegramLink) { TGW.openTelegramLink(url); break; } } catch (e) {}
+      window.open(url, '_blank', 'noopener'); break;
+    }
     case 'who-clear': keepNew(); C.who = null; C.q = ''; drawNew(); setTimeout(() => $('#who-q')?.focus(), 30); break;
     case 'day': keepNew(); C.day = +b; drawNew(); break;
     case 'hour': keepNew(); C.hour = +b; drawNew(); break;

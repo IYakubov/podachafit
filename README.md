@@ -18,6 +18,8 @@ One Node.js service serves the app and its API, with data in Postgres. There is 
 - **Telegram Mini App:** the bot's menu button «Играть» opens the app inside Telegram. The server verifies Telegram's signed `initData` with the bot token and signs the player in automatically once their Telegram is linked; the first time, they log in or register and the account is linked. Back button, haptics and Telegram colours are used inside Telegram; normal visitors never load Telegram's script.
 - **Housekeeping:** challenges nobody played are cancelled 3 days after their planned time, and their contacts are wiped.
 
+- **Clubs bot (optional):** with `CLUBS_BOT_TOKEN` set, a second bot takes requests from clubs and table-rental places (name, city, address, tables/price, contact). The admin links their chat once with `/admin <CLUBS_ADMIN_CODE>` and then uses `/requests`, `/approve ID`, `/reject ID`, `/clubs`, `/remove ID`. Approved clubs appear under «Где» in «Новый вызов» for players of that city and fill the field in one tap; a dashed slot «Есть клуб или столы в аренду?» opens the clubs bot.
+
 ## Privacy
 
 - Passwords and recovery codes are stored as bcrypt hashes.
