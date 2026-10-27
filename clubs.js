@@ -55,6 +55,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
       const r = await call('setWebhook', { url: `${APP_URL}/tgc/${HOOK}`, secret_token: HOOK, allowed_updates: ['message'], drop_pending_updates: true });
       console.log('Clubs bot: @' + NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
     }
+    await call('setMyName', { name: 'Подача FIT · Клубы' });
     await call('setMyCommands', { commands: [{ command: 'start', description: 'Добавить клуб в Подача FIT' }] });
     await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 Стоимость размещения в списке — 1 000 000 сум в месяц' });
     await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nСтоимость размещения клуба в списке — 1 000 000 сум в месяц.\n\nНажмите «Start» и ответьте на 5 вопросов.' });
