@@ -643,6 +643,19 @@ app.get('*', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'pu
 
 /* admin: delete accounts listed in the DELETE_NICKS variable (comma separated) at start-up.
    Their matches and notifications go with them (ON DELETE CASCADE). Remove the variable afterwards. */
+/* admin: KEEP_ONLY_NICKS="nick1,nick2" deletes every other account at start-up.
+   Safety: does nothing unless every listed nickname exists. Remove the variable afterwards. */
+async function adminKeepOnly(){
+  const keep = String(process.env.KEEP_ONLY_NICKS || '').split(',').map(x => x.trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
+  if (!keep.length) return;
+  try {
+    const found = (await q('SELECT nick_lower FROM users WHERE nick_lower = ANY($1)', [keep])).rows.map(r => r.nick_lower);
+    const missing = keep.filter(k => !found.includes(k));
+    if (missing.length) { console.error(`admin keep-only: not found ${missing.join(', ')} — nothing deleted`); return; }
+    const gone = (await q('DELETE FROM users WHERE NOT (nick_lower = ANY($1)) RETURNING nick', [keep])).rows.map(r => r.nick);
+    console.log(`admin keep-only: kept ${keep.join(', ')}; deleted ${gone.length}: ${gone.join(', ')}`);
+  } catch (e) { console.error('admin keep-only:', e.message); }
+}
 async function adminDeletes(){
   const list = String(process.env.DELETE_NICKS || '').split(',').map(x => x.trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
   for (const nick of list){
@@ -658,6 +671,7 @@ async function adminDeletes(){
 
 (async () => {
   for (let i = 0; i < 10; i++){ try { await migrate(); break; } catch (e) { console.error('DB not ready:', e.message); await new Promise(r => setTimeout(r, 3000)); if (i === 9) process.exit(1); } }
+  await adminKeepOnly();
   await adminDeletes();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
