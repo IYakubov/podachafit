@@ -636,8 +636,24 @@ const noCache = res => res.setHeader('Cache-Control', 'no-cache, must-revalidate
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html', setHeaders: (res, file) => { if (file.endsWith('.html')) noCache(res); } }));
 app.get('*', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
+/* admin: delete accounts listed in the DELETE_NICKS variable (comma separated) at start-up.
+   Their matches and notifications go with them (ON DELETE CASCADE). Remove the variable afterwards. */
+async function adminDeletes(){
+  const list = String(process.env.DELETE_NICKS || '').split(',').map(x => x.trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
+  for (const nick of list){
+    try {
+      const u = (await q('SELECT id, nick, city, rating, wins, losses FROM users WHERE nick_lower=$1', [nick])).rows[0];
+      if (!u) { console.log(`admin delete: «${nick}» not found`); continue; }
+      const m = (await q(`SELECT count(*) FILTER (WHERE status='done') AS done, count(*) FILTER (WHERE status<>'done') AS other FROM matches WHERE a=$1 OR b=$1`, [u.id])).rows[0];
+      await q('DELETE FROM users WHERE id=$1', [u.id]);
+      console.log(`admin delete: removed «${u.nick}» (${u.city}, rating ${u.rating}, ${u.wins}W/${u.losses}L) with ${m.done} played and ${m.other} other matches`);
+    } catch (e) { console.error(`admin delete «${nick}»:`, e.message); }
+  }
+}
+
 (async () => {
   for (let i = 0; i < 10; i++){ try { await migrate(); break; } catch (e) { console.error('DB not ready:', e.message); await new Promise(r => setTimeout(r, 3000)); if (i === 9) process.exit(1); } }
+  await adminDeletes();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   app.listen(PORT, () => console.log(`podacha.fit listening on ${PORT}`));
