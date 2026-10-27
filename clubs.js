@@ -56,8 +56,8 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
       console.log('Clubs bot: @' + NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
     }
     await call('setMyCommands', { commands: [{ command: 'start', description: 'Добавить клуб в Подача FIT' }] });
-    await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 1 000 000 сум/месяц' });
-    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nРазмещение — 1 000 000 сум в месяц.\n\nНажмите «Start» и ответьте на 5 вопросов.' });
+    await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 Стоимость размещения в списке — 1 000 000 сум в месяц' });
+    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nСтоимость размещения клуба в списке — 1 000 000 сум в месяц.\n\nНажмите «Start» и ответьте на 5 вопросов.' });
   }
 
   const adminChat = async () => ((await q(`SELECT value FROM settings WHERE key='clubs_admin_chat'`)).rows[0] || {}).value || null;
@@ -70,7 +70,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
 
   async function start(chat) {
     await setStep(chat, 1, {});
-    return send(chat, '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nРазмещение — <b>1 000 000 сум в месяц</b>.\n\n<b>1/5.</b> Название клуба или зала?', NOKB);
+    return send(chat, '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>1 000 000 сум в месяц</b>.\n\n<b>1/5.</b> Название клуба или зала?', NOKB);
   }
 
   async function admin(chat, text, from) {
@@ -105,7 +105,10 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
     if (ADMIN_CODE && /^\/admin\s+/.test(text)) {
       if (text.split(/\s+/)[1] !== ADMIN_CODE) return send(chat, 'Неверный код.');
       await q(`INSERT INTO settings (key, value) VALUES ('clubs_admin_chat', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [String(chat)]);
-      return send(chat, '✅ Этот чат получает заявки клубов.\n\n/requests — новые заявки\n/approve ID — добавить в приложение\n/reject ID — отклонить\n/clubs — клубы в приложении\n/remove ID — убрать');
+      await send(chat, '✅ Этот чат получает заявки клубов.\n\n/requests — новые заявки\n/approve ID — добавить в приложение\n/reject ID — отклонить\n/clubs — клубы в приложении\n/remove ID — убрать');
+      const waiting = +(await q(`SELECT count(*) FROM clubs WHERE status='pending'`)).rows[0].count;
+      if (waiting) await admin(chat, '/requests');
+      return;
     }
     if (String(chat) === String(await adminChat()) && /^\/(requests|approve|reject|clubs|remove)\b/.test(text)) return admin(chat, text, msg.from);
     if (/^\/start/.test(text) || text === '✏️ Заполнить заново') return start(chat);
@@ -136,7 +139,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
       const c = msg.contact && msg.contact.phone_number ? '+' + String(msg.contact.phone_number).replace(/^\+/, '') : clip(text, 60);
       if (!c) return send(chat, 'Отправьте номер кнопкой или напишите контакт текстом.');
       d.contact = c; await setStep(chat, 6, d);
-      return send(chat, 'Проверьте:\n\n' + summary(d) + '\n\n💳 1 000 000 сум/месяц', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
+      return send(chat, 'Проверьте:\n\n' + summary(d) + '\n\nСтоимость размещения в списке — 1 000 000 сум в месяц.', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
     }
     if (st.step === 6) {
       if (text !== '✅ Отправить заявку') return send(chat, 'Нажмите «✅ Отправить заявку» или «✏️ Заполнить заново».', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
