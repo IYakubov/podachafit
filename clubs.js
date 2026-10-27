@@ -69,12 +69,26 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
   const summary = d => `<b>${h(d.name)}</b>\n📍 ${h(d.city)}, ${h(d.address)}\n🏓 ${h(d.info || '—')}\n📞 ${h(d.contact)}`;
   const clip = (t, n) => String(t || '').trim().slice(0, n);
 
+  let WELCOME_ID = null;
+  async function sendWelcomePhoto(chat, caption) {
+    if (!TOKEN) return null;
+    const base = { chat_id: chat, caption, parse_mode: 'HTML', reply_markup: NOKB };
+    if (WELCOME_ID) { const r = await call('sendPhoto', Object.assign({ photo: WELCOME_ID }, base)); if (r && r.ok) return r; WELCOME_ID = null; }
+    try {
+      const fd = new FormData();
+      for (const k in base) fd.append(k, typeof base[k] === 'object' ? JSON.stringify(base[k]) : String(base[k]));
+      fd.append('photo', new Blob([require('fs').readFileSync(require('path').join(__dirname, 'public', 'clubs-welcome.jpg'))], { type: 'image/jpeg' }), 'welcome.jpg');
+      const r = await (await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, { method: 'POST', body: fd })).json();
+      if (r && r.ok && r.result && r.result.photo) WELCOME_ID = r.result.photo[r.result.photo.length - 1].file_id;
+      return r;
+    } catch (e) { return { ok: false, description: e.message }; }
+  }
   async function start(chat) {
     await setStep(chat, 1, {});
     const text = '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>1 000 000 сум в месяц</b>.\n\n<b>1/5.</b> Название клуба или зала?';
-    // the welcome picture with the text as its caption; plain text if Telegram can't fetch the picture
-    const r = /^https:/.test(APP_URL) ? await call('sendPhoto', { chat_id: chat, photo: `${APP_URL}/clubs-welcome.jpg`, caption: text, parse_mode: 'HTML', reply_markup: NOKB }) : null;
-    if (!r || !r.ok) return send(chat, text, NOKB);
+    // the welcome picture with the text as its caption: uploaded once from disk, then reused by its Telegram file_id
+    const r = await sendWelcomePhoto(chat, text);
+    if (!r || !r.ok) { console.error('Clubs bot: welcome photo failed:', r && r.description); return send(chat, text, NOKB); }
   }
 
   async function admin(chat, text, from) {
