@@ -306,14 +306,18 @@ select.input:invalid{color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--ball);border-color:var(--ball);color:#FFFFFF}
 .picks{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .who-res{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.clubs-lbl{color:var(--muted);font-weight:700;font-size:.85rem;margin-top:12px}
-.clubs{display:flex;gap:8px;overflow-x:auto;padding:6px 0 4px;scrollbar-width:none}
-.club{flex:none;max-width:78%;display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:10px 14px;color:var(--ink);cursor:pointer}
-.club b{font-weight:800;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.club small{color:var(--muted);font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.club.on{border-color:var(--ball);box-shadow:inset 0 0 0 1.5px var(--ball)}
-.club.slot{border:2px dashed #F2A36F;background:var(--ball-soft)}.club.slot small{color:#B5470F}
-.club.slot:only-child{flex:1;max-width:100%}
+.pop-scrim{position:fixed;inset:0;z-index:60;background:rgba(4,10,26,.55);display:flex;align-items:flex-end;justify-content:center;animation:fade .15s ease}
+.pop{width:100%;max-width:560px;max-height:85%;overflow:auto;background:var(--sheet);color:var(--ink);border-radius:28px 28px 0 0;padding:24px 20px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;animation:up .2s ease}
+.pop h3{font-family:var(--f-big);font-weight:700;font-size:1.35rem;text-align:center}
+.pop p{text-align:center;color:var(--muted);font-weight:700;margin-bottom:6px}
+.pop-ic{font-size:2.4rem;text-align:center}
+.pop .pop-t{text-align:left}
+.pick-list{display:flex;flex-direction:column;gap:8px}
+.pick{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:14px 16px;color:var(--ink);cursor:pointer}
+.pick b{font-weight:800;font-size:1.05rem}.pick small{color:var(--muted);font-weight:600;font-size:.9rem}
+.pick.own{border-style:dashed}
+.pick-foot{margin-top:28px;background:none;border:0;border-top:1.5px solid var(--line);padding:16px 4px 4px;color:#B5470F;font-weight:800;font-size:.95rem;text-align:center;cursor:pointer}
+@keyframes fade{from{opacity:0}}
 .who-row,.who-sel{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:8px 12px;color:var(--ink)}
 .who-row{cursor:pointer}.who-row:active{transform:scale(.99)}
 .who-row .av,.who-sel .av{width:42px;height:42px}
@@ -1104,8 +1108,7 @@ function drawNew(){
         <span class="colon2">:</span>
         ${wheel('w-min', Array.from({ length: 60 }, (_, i) => pad2(i)), C.min)}
       </div></div>
-    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Спортзал, стол 3" value="${esc(C.place || '')}">
-      ${clubsBlock()}</div>
+    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Где вы бросаете вызов?" value="${esc(C.place || '')}"></div>
     <div class="group"><label>Игра</label><div class="seg">${[3, 5].map(b => `<button data-a="bo:${b}" aria-pressed="${C.bo === b}">До ${need(b)} побед</button>`).join('')}</div></div>
     ${contactBlock(C.ct)}
     <p class="err" id="n-err"></p>
@@ -1170,13 +1173,24 @@ function drawAva(){
     <button class="btn main" data-a="ava-save">Сохранить</button>`);
 }
 /* clubs under «Где»: listed clubs of my city fill the field in one tap; the dashed slot invites owners to the clubs bot */
-function clubsBlock(){
-  const city = me().city, list = (db.clubs || []).filter(c => c.city === city);
-  if (!list.length && !S.clubsBot) return '';
-  return `<p class="clubs-lbl">Клубы рядом</p><div class="clubs">
-    ${list.map(c => `<button class="club" data-a="club:${c.id}"><b>${esc(c.name)}</b><small>${esc(c.address)}</small></button>`).join('')}
-    ${S.clubsBot ? `<button class="club slot" data-a="club-add"><b>🏓 Есть клуб или столы в аренду?</b><small>Добавьте адрес — игроки придут →</small></button>` : ''}
-  </div>`;
+/* «Где»: listed clubs open as a picker; while there are none, the first tap shows a one-time invitation to club owners */
+const cityClubs = () => (db.clubs || []).filter(c => c.city === me().city);
+const POP_KEY = 'pf_club_pop';
+const popSeen = () => { try { return localStorage.getItem(POP_KEY) === '1'; } catch (e) { return !!S.popSeen; } };
+const markPopSeen = () => { S.popSeen = true; try { localStorage.setItem(POP_KEY, '1'); } catch (e) {} };
+function pop(html){ closePop(); document.body.insertAdjacentHTML('beforeend', `<div class="pop-scrim" data-a="pop-close"><div class="pop" role="dialog" aria-modal="true">${html}</div></div>`); }
+function closePop(){ document.querySelector('.pop-scrim')?.remove(); }
+function openClubInvite(){
+  pop(`<span class="pop-ic">🏓</span><h3>Есть свой клуб?</h3><p>Добавьте его в список — игроки придут к вам играть.</p>
+    <button class="btn main" data-a="club-add">Добавить клуб</button>
+    <button class="btn alt" data-a="place-type">У меня нет клуба</button>`);
+}
+function openPlacePicker(){
+  const list = cityClubs();
+  pop(`<h3 class="pop-t">Где играем?</h3>
+    <div class="pick-list">${list.map(c => `<button class="pick" data-a="club:${c.id}"><b>${esc(c.name)}</b><small>${esc(c.address)}</small></button>`).join('')}
+      <button class="pick own" data-a="place-type"><b>✏️ Ввести своё место</b></button></div>
+    ${S.clubsBot ? `<button class="pick-foot" data-a="club-add">👇 Есть свой клуб? Добавьте его — игроки придут играть</button>` : ''}`);
 }
 function keepNew(){ if ($('#who-q')) C.q = $('#who-q').value; C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function dueText(m){
@@ -1295,6 +1309,13 @@ function openRules(){
 function toast(t){ document.querySelector('.toast')?.remove(); const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 2600); }
 
 /* ---------- actions ---------- */
+// «Где»: clubs picker, or the one-time invitation for club owners
+document.addEventListener('focusin', e => {
+  if (!e.target || e.target.id !== 'n-place') return;
+  if (S.placeSkip) { S.placeSkip = false; return; }
+  if (cityClubs().length) { e.target.blur(); openPlacePicker(); }
+  else if (S.clubsBot && !popSeen()) { e.target.blur(); openClubInvite(); }
+});
 // live player search in «Новый вызов»: only the results list is redrawn, so the keyboard stays open
 document.addEventListener('input', e => {
   if (e.target && e.target.id === 'who-q') { C.q = e.target.value; const r = $('#who-res'); if (r) r.innerHTML = whoResults(C.q); }
@@ -1314,8 +1335,11 @@ document.addEventListener('click', e => {
     case 'new': openNew(); break;
     case 'who': keepNew(); C.who = b || null; C.mode = b ? 'one' : 'all'; drawNew(); break;
     case 'whomode': keepNew(); C.mode = b; if (b === 'all') C.who = null; drawNew(); if (b === 'one' && !C.who) setTimeout(() => $('#who-q')?.focus(), 30); break;
-    case 'club': { const c = (db.clubs || []).find(x => String(x.id) === b); if (c && $('#n-place')) { $('#n-place').value = `${c.name}, ${c.address}`; C.place = $('#n-place').value; document.querySelectorAll('.club').forEach(x => x.classList.toggle('on', x === el)); } break; }
+    case 'club': { const c = (db.clubs || []).find(x => String(x.id) === b); if (c && $('#n-place')) { $('#n-place').value = `${c.name}, ${c.address}`; C.place = $('#n-place').value; } closePop(); break; }
+    case 'pop-close': if (e.target === el) closePop(); break;
+    case 'place-type': markPopSeen(); closePop(); S.placeSkip = true; setTimeout(() => { const i = $('#n-place'); if (i) { i.focus(); i.select && i.select(); } }, 30); break;
     case 'club-add': {
+      markPopSeen(); closePop();
       const url = `https://t.me/${S.clubsBot}?start=app`;
       try { if (TGW && TGW.openTelegramLink) { TGW.openTelegramLink(url); break; } } catch (e) {}
       window.open(url, '_blank', 'noopener'); break;
