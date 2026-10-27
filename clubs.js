@@ -56,8 +56,8 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
       console.log('Clubs bot: @' + NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
     }
     await call('setMyCommands', { commands: [{ command: 'start', description: 'Добавить клуб в Подача FIT' }] });
-    await call('setMyShortDescription', { short_description: 'Добавьте свой клуб настольного тенниса или столы в аренду в Подача FIT 🏓 Игроки найдут вас в один тап' });
-    await call('setMyDescription', { description: '🏓 Подача FIT — приложение, где игроки в настольный теннис находят соперников и бросают вызовы.\n\nКогда игрок создаёт вызов, он выбирает, где играть. Добавьте свой клуб или зал со столами в аренду — и игроки вашего города выберут вас в один тап.\n\nНажмите «Start» и ответьте на 5 коротких вопросов. Мы свяжемся с вами.' });
+    await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 1 000 000 сум/месяц' });
+    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nРазмещение — 1 000 000 сум в месяц.\n\nНажмите «Start» и ответьте на 5 вопросов.' });
   }
 
   const adminChat = async () => ((await q(`SELECT value FROM settings WHERE key='clubs_admin_chat'`)).rows[0] || {}).value || null;
@@ -70,7 +70,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
 
   async function start(chat) {
     await setStep(chat, 1, {});
-    return send(chat, 'Здравствуйте! Это бот <b>Подача FIT</b> для клубов 🏓\n\nКогда игрок бросает вызов в Подаче, он выбирает, где играть. Добавим ваш клуб в список — и игроки вашего города выберут вас в один тап.\n\nОтветьте на 5 коротких вопросов.\n\n<b>1/5.</b> Как называется клуб или зал?', NOKB);
+    return send(chat, '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nРазмещение — <b>1 000 000 сум в месяц</b>.\n\n<b>1/5.</b> Название клуба или зала?', NOKB);
   }
 
   async function admin(chat, text, from) {
@@ -120,33 +120,33 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
     if (st.step === 2) {
       if (!CITIES.includes(text)) return send(chat, 'Выберите город кнопкой ниже.', cityKb());
       d.city = text; await setStep(chat, 3, d);
-      return send(chat, '<b>3/5.</b> Адрес или ориентир — как игрокам вас найти?\nНапример: <i>ул. Амира Темура, 15, 2 этаж</i>', NOKB);
+      return send(chat, '<b>3/5.</b> Адрес или ориентир?\n<i>ул. Амира Темура, 15, 2 этаж</i>', NOKB);
     }
     if (st.step === 3) {
       if (text.length < 4) return send(chat, 'Напишите адрес чуть подробнее.');
       d.address = clip(text, 120); await setStep(chat, 4, d);
-      return send(chat, '<b>4/5.</b> Сколько столов и сколько стоит час игры?\nНапример: <i>6 столов, 40 000 сум/час</i>', kb([['Пропустить']]));
+      return send(chat, '<b>4/5.</b> Сколько столов и цена за час?\n<i>6 столов, 40 000 сум/час</i>', kb([['Пропустить']]));
     }
     if (st.step === 4) {
       d.info = text === 'Пропустить' ? '' : clip(text, 120); await setStep(chat, 5, d);
-      return send(chat, '<b>5/5.</b> Как с вами связаться? Отправьте номер кнопкой ниже или напишите телефон / @username.',
+      return send(chat, '<b>5/5.</b> Ваш телефон или @username?',
         kb([[{ text: '📱 Отправить мой номер', request_contact: true }]]));
     }
     if (st.step === 5) {
       const c = msg.contact && msg.contact.phone_number ? '+' + String(msg.contact.phone_number).replace(/^\+/, '') : clip(text, 60);
       if (!c) return send(chat, 'Отправьте номер кнопкой или напишите контакт текстом.');
       d.contact = c; await setStep(chat, 6, d);
-      return send(chat, 'Проверьте заявку:\n\n' + summary(d), kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
+      return send(chat, 'Проверьте:\n\n' + summary(d) + '\n\n💳 1 000 000 сум/месяц', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
     }
     if (st.step === 6) {
       if (text !== '✅ Отправить заявку') return send(chat, 'Нажмите «✅ Отправить заявку» или «✏️ Заполнить заново».', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
       const open = +(await q(`SELECT count(*) FROM clubs WHERE tg_chat=$1 AND status='pending'`, [chat])).rows[0].count;
-      if (open >= 3) { await setStep(chat, 0, {}); return send(chat, 'У вас уже есть заявки на рассмотрении. Мы скоро свяжемся с вами.', NOKB); }
+      if (open >= 3) { await setStep(chat, 0, {}); return send(chat, 'Ваша заявка уже у нас. Мы свяжемся с вами, чтобы всё обсудить.', NOKB); }
       const user = msg.from && msg.from.username ? msg.from.username : null;
       const c = (await q(`INSERT INTO clubs (name, city, address, info, contact, tg_user, tg_chat) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
         [d.name, d.city, d.address, d.info || null, d.contact, user, chat])).rows[0];
       await setStep(chat, 0, {});
-      await send(chat, 'Спасибо! Заявка отправлена 🙌\nМы свяжемся с вами в ближайшее время. Новую заявку можно отправить командой /start.', NOKB);
+      await send(chat, 'Спасибо! Заявка отправлена 🙌\nМы свяжемся с вами, чтобы всё обсудить.', NOKB);
       const ad = await adminChat();
       if (ad) await send(ad, `🆕 Заявка клуба #${c.id}\n\n${summary(c)}${user ? '\n✈️ @' + h(user) : ''}\n\n/approve ${c.id} — добавить в приложение\n/reject ${c.id} — отклонить`);
       else console.log(`Clubs bot: new request #${c.id} (no admin chat yet — send "/admin <code>" to the clubs bot)`);
