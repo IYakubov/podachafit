@@ -70,7 +70,10 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
 
   async function start(chat) {
     await setStep(chat, 1, {});
-    return send(chat, '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>1 000 000 сум в месяц</b>.\n\n<b>1/5.</b> Название клуба или зала?', NOKB);
+    const text = '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>1 000 000 сум в месяц</b>.\n\n<b>1/5.</b> Название клуба или зала?';
+    // the welcome picture with the text as its caption; plain text if Telegram can't fetch the picture
+    const r = /^https:/.test(APP_URL) ? await call('sendPhoto', { chat_id: chat, photo: `${APP_URL}/clubs-welcome.jpg`, caption: text, parse_mode: 'HTML', reply_markup: NOKB }) : null;
+    if (!r || !r.ok) return send(chat, text, NOKB);
   }
 
   async function admin(chat, text, from) {
