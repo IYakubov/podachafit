@@ -650,7 +650,7 @@ async function housekeeping(){
 app.get('/health', (req, res) => res.json({ ok: true }));
 // the page itself is never cached, so phones always get the latest version after a deploy
 const noCache = res => res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html', setHeaders: (res, file) => { if (file.endsWith('.html')) noCache(res); } }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html', setHeaders: (res, file) => { if (file.endsWith('.html') || file.endsWith('regions.js')) noCache(res); } }));
 app.get('*', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
 /* admin: delete accounts listed in the DELETE_NICKS variable (comma separated) at start-up.
