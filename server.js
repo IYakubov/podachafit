@@ -126,6 +126,7 @@ async function migrate(){
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS delta_l int;
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS reported_at timestamptz;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS region text;
+    UPDATE users SET region='Ташкентская область' WHERE region='Ташкент';
     CREATE TABLE IF NOT EXISTS notifications (
       id bigserial PRIMARY KEY,
       user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,

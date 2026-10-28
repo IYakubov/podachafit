@@ -44,6 +44,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
       );
       CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text);
       ALTER TABLE clubs ADD COLUMN IF NOT EXISTS region text;
+      UPDATE clubs SET region='Ташкентская область' WHERE region='Ташкент';
     `);
   }
 
