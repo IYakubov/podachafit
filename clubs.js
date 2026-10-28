@@ -4,7 +4,7 @@
    Env: CLUBS_BOT_TOKEN (from @BotFather), CLUBS_ADMIN_CODE (secret for "/admin <code>"). */
 const crypto = require('crypto');
 
-module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
+module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
   const TOKEN = process.env.CLUBS_BOT_TOKEN || '';
   const ADMIN_CODE = process.env.CLUBS_ADMIN_CODE || '';
   const HOOK = crypto.createHash('sha256').update('clubs:' + SECRET).digest('hex').slice(0, 32);
@@ -43,6 +43,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
         updated_at timestamptz NOT NULL DEFAULT now()
       );
       CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text);
+      ALTER TABLE clubs ADD COLUMN IF NOT EXISTS region text;
     `);
   }
 
@@ -65,8 +66,10 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
   const setStep = (chat, step, data) => q(`INSERT INTO club_chats (chat, step, data, updated_at) VALUES ($1,$2,$3,now())
       ON CONFLICT (chat) DO UPDATE SET step=$2, data=$3, updated_at=now()`, [chat, step, JSON.stringify(data || {})]);
   const getStep = async chat => (await q('SELECT step, data FROM club_chats WHERE chat=$1', [chat])).rows[0] || { step: 0, data: {} };
-  const cityKb = () => { const rows = []; for (let i = 0; i < CITIES.length; i += 2) rows.push(CITIES.slice(i, i + 2)); return kb(rows); };
-  const summary = d => `<b>${h(d.name)}</b>\n📍 ${h(d.city)}, ${h(d.address)}\n🏓 ${h(d.info || '—')}\n📞 ${h(d.contact)}`;
+  const pairs = list => { const rows = []; for (let i = 0; i < list.length; i += 2) rows.push(list.slice(i, i + 2)); return rows; };
+  const regionKb = () => kb(pairs(RG.regionNames));
+  const townKb = region => kb(pairs(RG.citiesOf(region)).concat([['⬅️ Другой регион']]));
+  const summary = d => `<b>${h(d.name)}</b>\n📍 ${h(d.city)}${d.region && d.region !== d.city ? ' (' + h(d.region) + ')' : ''}, ${h(d.address)}\n🏓 ${h(d.info || '—')}\n📞 ${h(d.contact)}`;
   const clip = (t, n) => String(t || '').trim().slice(0, n);
 
   let WELCOME_ID = null;
@@ -136,11 +139,20 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
     if (st.step === 1) {
       if (!text) return send(chat, 'Напишите название клуба текстом.');
       d.name = clip(text, 60); await setStep(chat, 2, d);
-      return send(chat, '<b>2/5.</b> В каком городе?', cityKb());
+      return send(chat, '<b>2/5.</b> Регион?', regionKb());
     }
     if (st.step === 2) {
-      if (!CITIES.includes(text)) return send(chat, 'Выберите город кнопкой ниже.', cityKb());
-      d.city = text; await setStep(chat, 3, d);
+      if (!RG.regionNames.includes(text)) return send(chat, 'Выберите регион кнопкой ниже.', regionKb());
+      d.region = text;
+      if (RG.citiesOf(text).length === 1) { d.city = RG.citiesOf(text)[0]; await setStep(chat, 3, d); return send(chat, '<b>3/5.</b> Адрес или ориентир?\n<i>ул. Амира Темура, 15, 2 этаж</i>', NOKB); }
+      await setStep(chat, 22, d);
+      return send(chat, 'Город или район? Выберите кнопкой или напишите название.', townKb(text));
+    }
+    if (st.step === 22) {
+      if (text === '⬅️ Другой регион') { await setStep(chat, 2, d); return send(chat, '<b>2/5.</b> Регион?', regionKb()); }
+      const town = text.replace(/\s+/g, ' ');
+      if (!RG.citiesOf(d.region).includes(town) && !RG.TOWN_RE.test(town)) return send(chat, 'Выберите город кнопкой или напишите название буквами.', townKb(d.region));
+      d.city = town; await setStep(chat, 3, d);
       return send(chat, '<b>3/5.</b> Адрес или ориентир?\n<i>ул. Амира Темура, 15, 2 этаж</i>', NOKB);
     }
     if (st.step === 3) {
@@ -164,8 +176,8 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
       const open = +(await q(`SELECT count(*) FROM clubs WHERE tg_chat=$1 AND status='pending'`, [chat])).rows[0].count;
       if (open >= 3) { await setStep(chat, 0, {}); return send(chat, 'Ваша заявка уже у нас. Мы свяжемся с вами, чтобы всё обсудить.', NOKB); }
       const user = msg.from && msg.from.username ? msg.from.username : null;
-      const c = (await q(`INSERT INTO clubs (name, city, address, info, contact, tg_user, tg_chat) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [d.name, d.city, d.address, d.info || null, d.contact, user, chat])).rows[0];
+      const c = (await q(`INSERT INTO clubs (name, city, region, address, info, contact, tg_user, tg_chat) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [d.name, d.city, d.region || RG.REGION_OF[d.city] || null, d.address, d.info || null, d.contact, user, chat])).rows[0];
       await setStep(chat, 0, {});
       await send(chat, 'Спасибо! Заявка отправлена 🙌\nМы свяжемся с вами, чтобы всё обсудить.', NOKB);
       const ad = await adminChat();
@@ -175,6 +187,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, CITIES }) {
     }
   }));
 
-  const activeClubs = async () => (await q(`SELECT id, name, city, address FROM clubs WHERE status='active' ORDER BY name LIMIT 300`)).rows;
+  const activeClubs = async () => (await q(`SELECT id, name, city, COALESCE(region, '') AS region, address FROM clubs WHERE status='active' ORDER BY name LIMIT 300`)).rows
+    .map(c => Object.assign(c, { region: c.region || RG.REGION_OF[c.city] || '' }));
   return { migrate, setup, activeClubs, botName: () => NAME };
 };

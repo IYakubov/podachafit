@@ -306,6 +306,8 @@ select.input:invalid{color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--ball);border-color:var(--ball);color:#FFFFFF}
 .picks{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .who-res{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.loc{display:flex;flex-direction:column;gap:8px}
+#af .loc-r,#af .loc-c,#af #a-loc-o{margin-top:0}
 .pop-scrim{position:fixed;inset:0;z-index:60;background:rgba(4,10,26,.55);display:flex;align-items:flex-end;justify-content:center;animation:fade .15s ease}
 .pop{width:100%;max-width:560px;max-height:85%;overflow:auto;background:var(--sheet);color:var(--ink);border-radius:28px 28px 0 0;padding:24px 20px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;animation:up .2s ease}
 .pop h3{font-family:var(--f-big);font-weight:700;font-size:1.35rem;text-align:center}
@@ -401,6 +403,7 @@ select.input:invalid{color:var(--muted)}
 <body>
 <div id="app"></div>
 
+<script src="/regions.js"></script>
 <script>
 (() => {
 'use strict';
@@ -426,7 +429,41 @@ const I = {
 };
 
 /* ---------- data comes from the server ---------- */
-const CITIES = ['Ташкент','Самарканд','Бухара','Андижан','Наманган','Фергана','Нукус','Карши','Коканд','Термез','Джизак','Ургенч','Навои','Гулистан'];
+const RG = window.PF_REGIONS;
+const regionOf = p => (p && (p.region || RG.REGION_OF[p.city])) || '';
+/* two-step location: region, then a city / town inside it (or a town typed by hand) */
+const OTHER = '__other';
+function locFields(id, region, city){
+  const towns = region ? RG.citiesOf(region) : [], custom = region && city && !towns.includes(city);
+  return `<select class="input loc-r" id="${id}-r" data-loc="${id}" aria-label="Регион"><option value="" disabled${region ? '' : ' selected'}>Регион</option>${RG.regionNames.map(r => `<option${r === region ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
+    <select class="input loc-c" id="${id}-c" aria-label="Город или район"${region ? '' : ' disabled'}>${townOptions(region, custom ? OTHER : city)}</select>
+    <input class="input" id="${id}-o" placeholder="Название населённого пункта" maxlength="30" value="${custom ? esc(city) : ''}"${custom ? '' : ' hidden'}>`;
+}
+function townOptions(region, sel){
+  const towns = region ? RG.citiesOf(region) : [];
+  if (towns.length === 1) return `<option selected>${esc(towns[0])}</option>`;
+  return `<option value="" disabled${sel ? '' : ' selected'}>Город или район</option>${towns.map(c => `<option${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('')}<option value="${OTHER}"${sel === OTHER ? ' selected' : ''}>Другой населённый пункт…</option>`;
+}
+function readLoc(id){
+  const region = $(`#${id}-r`).value, c = $(`#${id}-c`).value;
+  if (!region) return { error: 'Выберите регион' };
+  if (!c) return { error: 'Выберите город или район' };
+  if (c !== OTHER) return { region, city: c };
+  const t = $(`#${id}-o`).value.trim().replace(/\s+/g, ' ');
+  if (!RG.TOWN_RE.test(t)) return { error: 'Напишите название населённого пункта буквами' };
+  return { region, city: t };
+}
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.classList && t.classList.contains('loc-r')) {
+    const id = t.dataset.loc, c = $(`#${id}-c`), o = $(`#${id}-o`);
+    c.innerHTML = townOptions(t.value, null); c.disabled = false; o.hidden = true; o.value = '';
+    if (RG.citiesOf(t.value).length > 1) setTimeout(() => c.focus(), 30);
+  }
+  if (t.classList && t.classList.contains('loc-c')) {
+    const o = $(`#${t.id.slice(0, -2)}-o`); o.hidden = t.value !== OTHER; if (!o.hidden) setTimeout(() => o.focus(), 30);
+  }
+});
 let db = { me: null, players: [], matches: [] };
 
 const P = pid => db.players.find(p => p.id === pid) || { id: pid, name: 'Игрок', city: '', rating: 1000, w: 0, l: 0 };
@@ -732,8 +769,8 @@ function renderAuth(){
   const form = {
     reg: `<p class="form-title">Новый игрок</p>
         <input class="input" id="a-nick" placeholder="Никнейм" autocomplete="username" autocapitalize="off" maxlength="16" aria-label="Никнейм">
-        <p class="fine on-bg">3–16 символов: буквы, цифры, _. Не указывайте настоящее имя и личные данные.</p>
-        <select class="input" id="a-city" required aria-label="Город"><option value="" disabled selected>Ваш город</option>${CITIES.map(c => `<option>${c}</option>`).join('')}</select>
+        <p class="fine on-bg">3–16 символов, хотя бы одна буква. Не указывайте настоящее имя и личные данные.</p>
+        ${locFields('a-loc', '', '')}
         <input class="input" id="a-pass" type="password" placeholder="Пароль" autocomplete="new-password" aria-label="Пароль">`,
     login: `<p class="form-title">С возвращением</p>
         <input class="input" id="a-nick" placeholder="Никнейм" autocomplete="username" autocapitalize="off" aria-label="Никнейм">
@@ -778,11 +815,11 @@ function renderAuth(){
       if (mode === 'reg'){
         { const ne = nickError(nick); if (ne) return err(ne); }
         if (RESERVED.includes(nick.toLowerCase())) return err('Этот никнейм уже существует. Выберите другой');
-        const city = $('#a-city').value;
-        if (!city) return err('Выберите город');
+        const loc = readLoc('a-loc');
+        if (loc.error) return err(loc.error);
         if (pass.length < 6) return err('Пароль — минимум 6 символов');
         btn.disabled = true;
-        const r = await api('/api/register', { nick, city, pass, ava: randAva() });
+        const r = await api('/api/register', { nick, region: loc.region, city: loc.city, pass, ava: randAva() });
         await tgAutoLink();
         S.view = 'home'; await load(); openCode(r.code); return;
       }
@@ -823,7 +860,7 @@ function attn(){ return db.matches.filter(m => mine(m) && (m.status === 'booked'
 
 function vHome(){
   const p = me(), rk = rankOf(p.id), t = todo();
-  const same = m => P(m.a).city === p.city ? 0 : 1;
+  const same = m => P(m.a).city === p.city ? 0 : regionOf(P(m.a)) === regionOf(p) ? 1 : 2;
   const open = db.matches.filter(m => m.status === 'open' && m.a !== db.me && m.when > Date.now() - 3 * 3600e3).sort((a, b) => same(a) - same(b) || a.when - b.when);
   const rows = [...t.map(m => ({ m, hot: true })), ...open.map(m => ({ m }))].slice(0, 4);
   return `
@@ -984,8 +1021,8 @@ function openEdit(){
       <input class="input" id="e-nick" value="${esc(p.name)}" maxlength="16" autocapitalize="off" autocomplete="off">
       <p class="nick-state" id="e-nick-state"></p>
       <p class="fine">Входите в аккаунт с новым никнеймом. Рейтинг и матчи сохранятся.</p></div>
-    <div class="group"><label for="e-city">Город</label>
-      <select class="input" id="e-city">${CITIES.map(c => `<option${c === p.city ? ' selected' : ''}>${c}</option>`).join('')}</select>
+    <div class="group"><label for="e-loc-r">Регион и город</label>
+      <div class="loc">${locFields('e-loc', regionOf(p), p.city)}</div>
       <p class="fine">Вызовы и уведомления в Telegram будут приходить из нового города.</p></div>
     <p class="err" id="e-err"></p>
     <button class="btn main" data-a="save-prof" id="e-save">Сохранить</button>
@@ -1174,7 +1211,7 @@ function drawAva(){
 }
 /* clubs under «Где»: listed clubs of my city fill the field in one tap; the dashed slot invites owners to the clubs bot */
 /* «Где»: listed clubs open as a picker; while there are none, the first tap shows a one-time invitation to club owners */
-const cityClubs = () => (db.clubs || []).filter(c => c.city === me().city);
+const cityClubs = () => { const m = me(), r = regionOf(m); return (db.clubs || []).filter(c => c.city === m.city || (r && c.region === r)).sort((a, b) => (a.city === m.city ? 0 : 1) - (b.city === m.city ? 0 : 1)); };
 const POP_KEY = 'pf_club_pop';
 const popSeen = () => { try { return localStorage.getItem(POP_KEY) === '1'; } catch (e) { return !!S.popSeen; } };
 const markPopSeen = () => { S.popSeen = true; try { localStorage.setItem(POP_KEY, '1'); } catch (e) {} };
@@ -1419,10 +1456,11 @@ document.addEventListener('click', e => {
       break;
     }
     case 'save-prof': {
-      const nick = $('#e-nick').value.trim().replace(/^@/, ''), city = $('#e-city').value, err = t => $('#e-err').textContent = t;
+      const nick = $('#e-nick').value.trim().replace(/^@/, ''), err = t => $('#e-err').textContent = t;
       { const ne = nickError(nick); if (ne) { err(ne); return; } }
+      const loc = readLoc('e-loc'); if (loc.error) { err(loc.error); return; }
       el.disabled = true;
-      api('/api/profile', { nick, city }).then(async () => { close(); await load(); toast('Профиль сохранён'); })
+      api('/api/profile', { nick, region: loc.region, city: loc.city }).then(async () => { close(); await load(); toast('Профиль сохранён'); })
         .catch(ex => { err(ex.message); el.disabled = false; const st = $('#e-nick-state'); if (st && /никнейм/i.test(ex.message)){ st.textContent = ex.message; st.className = 'nick-state bad'; } });
       break;
     }

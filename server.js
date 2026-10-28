@@ -29,7 +29,17 @@ const pool = new Pool({ connectionString: DATABASE_URL, ssl: local || /railway\.
 const q = (text, params) => pool.query(text, params);
 
 /* ---------------- rules shared with the app ---------------- */
-const CITIES = ['Ташкент','Самарканд','Бухара','Андижан','Наманган','Фергана','Нукус','Карши','Коканд','Термез','Джизак','Ургенч','Навои','Гулистан'];
+const RG = require('./public/regions.js');
+// region + city/town: a listed town of that region, or a town typed by hand. Old apps send only the city.
+function location(regionIn, cityIn){
+  const city = String(cityIn || '').trim().replace(/\s+/g, ' ');
+  let region = String(regionIn || '').trim();
+  if (!region) region = RG.REGION_OF[city] || '';
+  if (!RG.regionNames.includes(region)) bad('Выберите регион');
+  if (!city) bad('Выберите город или район');
+  if (!RG.citiesOf(region).includes(city) && !RG.TOWN_RE.test(city)) bad('Проверьте название населённого пункта');
+  return { region, city };
+}
 const KINDS = ['wolf','fox','tiger','lion','bear','panda','eagle','panther','bull','raccoon','owl','boar'];
 const FURS = ['#E0742E','#D8A63C','#B84A3E','#C76A9A','#7A5CC9','#3D78C9','#2E9C8E','#5C9E48','#3A3D46'];
 // nicknames: 3–16 characters, at least one letter; letters, digits and common symbols in any order
@@ -115,6 +125,7 @@ async function migrate(){
     CREATE INDEX IF NOT EXISTS matches_b_idx ON matches(b);
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS delta_l int;
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS reported_at timestamptz;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS region text;
     CREATE TABLE IF NOT EXISTS notifications (
       id bigserial PRIMARY KEY,
       user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -272,7 +283,7 @@ const wrap = fn => (req, res) => fn(req, res).catch(e => {
   console.error(e.message); res.status(500).json({ error: 'Ошибка сервера. Попробуйте ещё раз.' });
 });
 // second bot: clubs ask to be listed under «Где»
-const CLUBS = require('./clubs')({ app, q, wrap, APP_URL, SECRET, CITIES });
+const CLUBS = require('./clubs')({ app, q, wrap, APP_URL, SECRET, RG });
 
 const bad = (msg, status = 400) => { const e = new Error(msg); e.status = status; throw e; };
 
@@ -284,7 +295,7 @@ async function auth(req){
 }
 async function must(req){ const u = await auth(req); if (!u) bad('Войдите в аккаунт', 401); return u; }
 
-const pub = u => ({ id: u.id, name: u.nick, city: u.city, rating: u.rating, w: u.wins, l: u.losses, ava: { k: u.ava_kind, fur: u.ava_fur } });
+const pub = u => ({ id: u.id, name: u.nick, city: u.city, region: u.region || RG.REGION_OF[u.city] || '', rating: u.rating, w: u.wins, l: u.losses, ava: { k: u.ava_kind, fur: u.ava_fur } });
 function matchOut(m, me){
   const mine = me && (m.a === me || m.b === me);
   const showContacts = mine && (m.status === 'booked' || m.status === 'check');
@@ -301,17 +312,17 @@ function matchOut(m, me){
 app.get('/api/me', wrap(async (req, res) => { const u = await auth(req); res.json({ me: u ? pub(u) : null }); }));
 
 app.post('/api/register', wrap(async (req, res) => {
-  const nick = String(req.body.nick || '').trim().replace(/^@/, ''), city = String(req.body.city || ''), pass = String(req.body.pass || '');
+  const nick = String(req.body.nick || '').trim().replace(/^@/, ''), pass = String(req.body.pass || '');
   { const ne = nickError(nick); if (ne) bad(ne); }
   if (RESERVED.includes(nick.toLowerCase())) bad('Этот никнейм уже существует. Выберите другой');
-  if (!CITIES.includes(city)) bad('Выберите город');
+  const { region, city } = location(req.body.region, req.body.city);
   if (pass.length < 6 || pass.length > 100) bad('Пароль — минимум 6 символов');
   const ava = req.body.ava || {};
   const kind = KINDS.includes(ava.k) ? ava.k : KINDS[crypto.randomInt(KINDS.length)];
   const code = newCode();
   try {
-    const r = await q(`INSERT INTO users (nick, nick_lower, pass_hash, code_hash, city, ava_kind) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [nick, nick.toLowerCase(), await bcrypt.hash(pass, 10), await bcrypt.hash(code, 10), city, kind]);
+    const r = await q(`INSERT INTO users (nick, nick_lower, pass_hash, code_hash, city, region, ava_kind) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [nick, nick.toLowerCase(), await bcrypt.hash(pass, 10), await bcrypt.hash(code, 10), city, region, kind]);
     const u = r.rows[0]; setSession(res, u.id, u.session_ver); res.json({ me: pub(u), code });
   } catch (e) { if (e.code === '23505') bad('Этот никнейм уже существует. Выберите другой'); throw e; }
 }));
@@ -368,11 +379,11 @@ app.get('/api/nick', wrap(async (req, res) => {
 }));
 app.post('/api/profile', wrap(async (req, res) => {
   const u = await must(req);
-  const nick = String(req.body.nick || '').trim().replace(/^@/, ''), city = String(req.body.city || '');
+  const nick = String(req.body.nick || '').trim().replace(/^@/, '');
   const problem = nickProblem(nick); if (problem) bad(problem);
-  if (!CITIES.includes(city)) bad('Выберите город');
+  const { region, city } = location(req.body.region, req.body.city);
   try {
-    const r = await q('UPDATE users SET nick=$2, nick_lower=$3, city=$4 WHERE id=$1 RETURNING *', [u.id, nick, nick.toLowerCase(), city]);
+    const r = await q('UPDATE users SET nick=$2, nick_lower=$3, city=$4, region=$5 WHERE id=$1 RETURNING *', [u.id, nick, nick.toLowerCase(), city, region]);
     res.json({ me: pub(r.rows[0]) });
   } catch (e) { if (e.code === '23505') bad('Этот никнейм уже существует. Выберите другой'); throw e; }
 }));
