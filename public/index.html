@@ -143,6 +143,12 @@ select.input:invalid{color:var(--muted)}
 .rank-row:last-child{border-bottom:0}
 .rank-row.me{background:var(--ball-soft);margin:0 -18px;padding-left:20px;padding-right:20px;border-bottom-color:transparent}
 .rank-row .sub{color:var(--muted)}
+.as-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:8px max(14px,env(safe-area-inset-left,0px));background:var(--ball);color:#fff;font-weight:700;font-size:.95rem}
+.as-bar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-bar button{border:0;border-radius:999px;background:#fff;color:var(--ball);font:inherit;font-weight:800;padding:8px 14px;cursor:pointer}
+.demo-p{display:flex;flex-direction:column;gap:10px;margin-top:8px;background:var(--card);color:var(--ink);border-radius:24px;padding:18px}
+.demo-p h2{margin:0;font-size:1.2rem}.demo-p>.sub{margin:0;color:var(--muted);font-weight:600;font-size:.9rem}
+.demo-p .rank-row .av{width:42px;height:42px}.demo-p .hot{color:#E5352B}.demo-p .btn.sm{flex-shrink:0;min-height:44px;padding:0 16px}.demo-p .rank-row{gap:12px}
 .rank-row .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .board.full{padding:0 4px;border-radius:0;background:none}
 .board.full .rank-row.me{margin:0 -6px;padding-left:8px;padding-right:8px;border-radius:16px}
@@ -633,7 +639,7 @@ function normContact(type, v){
 const isTg = c => c && c[0] === '@';
 const fmtPhone = c => c.startsWith('+998') && c.length === 13 ? `+998 ${c.slice(4, 6)} ${c.slice(6, 9)}-${c.slice(9, 11)}-${c.slice(11)}` : c;
 const fmtContact = c => isTg(c) ? c : fmtPhone(c);
-const CKEY = () => 'rally.contact.' + db.me;
+const CKEY = () => 'rally.contact.' + (S.as ? S.as.owner : db.me);   // playing for a demo player: your own contact
 function savedContact(){ try { return JSON.parse(localStorage.getItem(CKEY())) || { type: 'tg', val: '' }; } catch(e){ return { type: 'tg', val: '' }; } }
 function rememberContact(type, val){ try { localStorage.setItem(CKEY(), JSON.stringify({ type, val })); } catch(e){} }
 const contactOf = (m, pid) => pid === m.a ? m.ca : m.cb;
@@ -681,6 +687,7 @@ async function api(path, body){
   let r;
   const headers = body === undefined ? {} : { 'Content-Type': 'application/json' };
   if (IN_TG){ headers['X-Pf-Tg'] = '1'; if (TG_SESSION) headers['X-Pf-Session'] = TG_SESSION; }
+  if (S.as) headers['X-Pf-As'] = S.as.id;
   try { r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin', cache: 'no-store' }); }
   catch(e){ throw new Error('Нет связи с сервером. Проверьте интернет'); }
   if (IN_TG && r.headers.get('X-Pf-Session')) TG_SESSION = r.headers.get('X-Pf-Session');
@@ -693,6 +700,8 @@ async function load(){
   const st = await api('/api/state');
   db.me = st.me.id; db.players = st.players; db.matches = st.matches; db.notes = st.notes || [];
   db.clubs = st.clubs || []; S.clubsBot = st.clubsBot || null;
+  S.owner = !!st.owner; S.demo = st.demo || [];
+  if (S.as && !st.acting) S.as = null;
   if (st.tg) S.tg = Object.assign({}, S.tg, st.tg, { pending: S.tg && S.tg.pending && !st.tg.linked });
   if (!db.players.some(p => p.id === db.me)) db.players.push(st.me);
   announce();
@@ -975,7 +984,7 @@ function vMe(){
   const form = games.slice(0, 5).map(m => m.winner === db.me ? 'W' : 'L');
   const pct = p.w + p.l ? Math.round(p.w / (p.w + p.l) * 100) : 0;
   return `
-  <div class="prof"><button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button><div><h1${p.name.length > 10 ? ' class="long"' : ''}>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p><button class="edit-btn" data-a="edit-prof">Изменить профиль</button></div></div>
+  <div class="prof">${S.as ? av(p) : `<button class="edit" data-a="ava" aria-label="Сменить аватар">${av(p)}</button>`}<div><h1${p.name.length > 10 ? ' class="long"' : ''}>${esc(p.name)}</h1><p class="hello">${esc(p.city ? p.city + ' · ' : '')}${plural(p.w + p.l, 'матч', 'матча', 'матчей')}</p>${S.as ? '' : `<button class="edit-btn" data-a="edit-prof">Изменить профиль</button>`}</div></div>
   <div class="stats">
     <div class="stat"><b class="num"${rated(p) ? '' : ' style="font-size:1.4rem"'}>${rated(p) ? p.rating : '—'}</b><span>${rated(p) ? 'рейтинг' : 'нет рейтинга'}</span></div>
     <div class="stat"><b class="win num">${p.w}</b><span>победы</span></div>
@@ -985,11 +994,22 @@ function vMe(){
     <span>Последние матчи · ${pct}% побед</span>
     ${form.length ? `<div class="form-row">${form.map(f => `<i class="${f}" title="${f === 'W' ? 'Победа' : 'Поражение'}" aria-label="${f === 'W' ? 'Победа' : 'Поражение'}">${f === 'W' ? I.cup : I.cupx}</i>`).join('')}</div>` : '<span style="color:var(--ink)">Пока нет сыгранных матчей</span>'}
   </div>
-  <div id="tg-card"></div>
+  ${S.as ? `<button class="btn main" data-a="as-off">Вернуться в свой аккаунт</button>` : `<div id="tg-card"></div>${S.owner ? demoPanel() : ''}`}
   <div style="margin-top:24px;display:flex;flex-direction:column;gap:6px">
-    <button class="btn ghost" data-a="logout">Выйти</button>
+    ${S.as ? '' : `<button class="btn ghost" data-a="logout">Выйти</button>`}
     <button class="btn link" data-a="about">О проекте и контакты</button>
   </div>`;
+}
+
+/* ---------- demo players (owner only): who has something waiting, and «Играть за» to act for them ---------- */
+const demoWaiting = () => (S.demo || []).reduce((n, d) => n + d.invites + d.todo, 0);
+function demoPanel(){
+  const list = (S.demo || []).slice().sort((a, b) => (b.invites + b.todo) - (a.invites + a.todo) || b.active - a.active || b.rating - a.rating);
+  if (!list.length) return '';
+  const what = d => [d.invites && `<b class="hot">${plural(d.invites, 'вызов', 'вызова', 'вызовов')} ждёт ответа</b>`, d.todo && `<b class="hot">${plural(d.todo, 'матч', 'матча', 'матчей')}: нужен счёт</b>`,
+    !d.todo && d.active && plural(d.active, 'активный матч', 'активных матча', 'активных матчей')].filter(Boolean).join(' · ') || 'ничего не ждёт';
+  return `<div class="demo-p"><h2>Демо-игроки</h2><p class="sub">Вызовы им приходят и вам в Telegram. Нажмите «Играть», чтобы ответить от их имени.</p>
+    <div class="board full">${list.map(d => `<div class="rank-row${d.invites + d.todo ? ' wait' : ''}">${av(d)}<div class="txt" style="flex:1;min-width:0"><p class="nm" style="font-weight:800">${esc(d.name)}</p><p class="sub" style="font-size:.85rem;font-weight:600">${esc(d.city)} · ${d.rating}</p><p class="sub" style="font-size:.85rem;font-weight:600">${what(d)}</p></div><button class="btn ${d.invites + d.todo ? 'main' : 'alt'} sm" data-a="as:${d.id}">Играть</button></div>`).join('')}</div></div>`;
 }
 
 /* ---------- shell ---------- */
@@ -999,13 +1019,14 @@ function render(){
   const n = todo().filter(m => m.status === 'invite').length;
   const u = unreadNotes().length, a = attn().length;
   const badge = v => v === 'home' && (n || u) ? `<span class="tag">${n || u}</span>`
-    : v === 'matches' && a ? `<span class="tag red" aria-label="Требуют внимания: ${a}">${a}</span>` : '';
+    : v === 'matches' && a ? `<span class="tag red" aria-label="Требуют внимания: ${a}">${a}</span>`
+    : v === 'me' && !S.as && demoWaiting() ? `<span class="tag red" aria-label="Демо-игроки ждут: ${demoWaiting()}">${demoWaiting()}</span>` : '';
   const tab = (v, icon, label) => `<button class="nav" data-a="go:${v}" ${S.view === v ? 'aria-current="page"' : ''}>${icon}${label}${badge(v)}</button>`;
   const tabs = tab('home', I.home, 'Главная') + tab('matches', I.match, 'Матчи') + tab('rank', I.rank, 'Рейтинг') + tab('me', I.me, 'Профиль');
   const view = { home: vHome, matches: vMatches, rank: vRank, me: vMe }[S.view]();
   $('#app').innerHTML = `
     <nav class="rail"><div class="logo"><svg class="brand" viewBox="120 58 960 290" role="img" aria-label="Подача FIT"><defs><linearGradient id="pd-lime2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#EE5A12"/></linearGradient></defs><text x="600" y="204" text-anchor="middle" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="900" font-style="italic" letter-spacing="-8" textLength="940" lengthAdjust="spacingAndGlyphs">Подача</text><g fill="url(#pd-lime2)"><path d="M190 269 L525 239 L545 239 L522 251 L190 278 Q177 278 190 269Z"/><path d="M260 291 L518 270 L532 270 L515 280 L260 298 Q248 298 260 291Z"/><path d="M350 310 L520 299 L533 299 L517 307 L350 316 Q340 316 350 310Z"/></g><circle cx="574" cy="278" r="43" fill="url(#pd-lime2)"/><path d="M574 236 C592 249 599 266 592 282 C586 296 577 309 574 320" fill="none" stroke="#5A2205" stroke-width="4" stroke-linecap="round" opacity=".85"/><text x="635" y="335" fill="url(#pd-lime2)" font-family="Arial, Helvetica, sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4">FIT</text></svg></div>${tabs}<button class="btn main" data-a="new">${I.plus}Вызов</button></nav>
-    <div class="screen"><main class="view"><div class="court">${view}</div></main><nav class="tabs">${tabs}</nav></div>`;
+    <div class="screen">${S.as ? `<div class="as-bar"><span>Играете за <b>${esc(me().name)}</b></span><button data-a="as-off">Вернуться</button></div>` : ''}<main class="view"><div class="court">${view}</div></main><nav class="tabs">${tabs}</nav></div>`;
   if (S.view === 'me') drawTg();
   tgBack();
 }
@@ -1015,6 +1036,7 @@ const NUDGE_EVERY = 2 * 864e5;
 const nudgeKey = () => 'pf.tgnudge.' + db.me;
 function nudgeSeen(){ try { localStorage.setItem(nudgeKey(), String(Date.now())); } catch(e){} }
 function maybeNudge(){
+  if (S.as) return;   // playing for a demo player
   // shown once each time the website is opened, only to players without Telegram, never inside the Mini App
   const t = S.tg;
   if (IN_TG || !t || !t.available || t.linked || t.pending || S.nudged) return;
@@ -1496,6 +1518,8 @@ document.addEventListener('click', e => {
     case 'note': close(); S.notesShown = null; S.view = b; render(); break;
     case 'perm': try { Notification.requestPermission().then(() => drawNotes()); } catch(e){} break;
     case 'rank-more': openRankList(); break;
+    case 'as': { const d = (S.demo || []).find(x => x.id === b); if (!d) break; close(); S.as = { id: d.id, name: d.name, owner: db.me }; S.view = 'home'; stamp = null; load().then(() => toast('Вы играете за ' + d.name)).catch(e => { S.as = null; toast(e.message); }); break; }
+    case 'as-off': close(); S.as = null; S.view = 'me'; stamp = null; load().catch(() => {}); break;
     case 'rules': openRules(); break;
     case 'ava': openAva(false); break;
     case 'ak': A.k = b; drawAva(); break;

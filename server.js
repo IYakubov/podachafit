@@ -192,8 +192,14 @@ async function tgDrain(){
 const whenRu = t => new Date(t).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 const rateRu = u => u.wins + u.losses > 0 ? `рейтинг ${u.rating}` : 'новичок';
 async function tgPersonal(userId, kind, matchId, actorId){
-  const u = (await q('SELECT tg_chat, tg_mine FROM users WHERE id=$1', [userId])).rows[0];
-  if (!u || !u.tg_chat || !u.tg_mine) return;
+  const u = (await q('SELECT tg_chat, tg_mine, demo, nick FROM users WHERE id=$1', [userId])).rows[0];
+  if (!u) return;
+  let chat = u.tg_chat, pre = '';
+  if (u.demo) {   // nobody reads a demo player's messages: the owner gets them, marked with the player's name
+    const o = (await q('SELECT tg_chat FROM users WHERE nick_lower=$1', [ADMIN_NICK])).rows[0];
+    if (!o || !o.tg_chat) return;
+    chat = o.tg_chat; pre = `👤 Демо-игрок <b>${h(u.nick)}</b>\n`;
+  } else if (!u.tg_chat || !u.tg_mine) return;
   const m = matchId ? (await q('SELECT * FROM matches WHERE id=$1', [matchId])).rows[0] : null;
   const a = actorId ? (await q('SELECT nick, rating, wins, losses FROM users WHERE id=$1', [actorId])).rows[0] : null;
   const who = a ? `<b>${h(a.nick)}</b>` : '';
@@ -209,7 +215,7 @@ async function tgPersonal(userId, kind, matchId, actorId){
     confirmed: m && (m.winner === userId ? `🏆 ${who} подтвердил(а) счёт ${sc}. Победа! <b>+${m.delta}</b> к рейтингу` : `${who} подтвердил(а) счёт ${sc}. <b>−${m.delta_l ?? m.delta}</b> к рейтингу`),
     auto: m && `Счёт ${sc} засчитан автоматически: соперник не ответил за сутки.`
   }[kind];
-  if (txt) await tgSend(u.tg_chat, txt, 'Открыть Подачу');
+  if (txt) await tgSend(chat, pre + txt, 'Открыть Подачу');
 }
 async function tgCityAlert(matchId){
   const m = (await q(`SELECT m.*, u.nick, u.city, u.rating, u.wins, u.losses FROM matches m JOIN users u ON u.id=m.a WHERE m.id=$1`, [matchId])).rows[0];
@@ -289,11 +295,34 @@ const CLUBS = require('./clubs')({ app, q, wrap, APP_URL, SECRET, RG });
 
 const bad = (msg, status = 400) => { const e = new Error(msg); e.status = status; throw e; };
 
+/* the owner (ADMIN_NICK, default iyakubov) can play for the demo players: the app sends X-Pf-As: <demo id>.
+   Only match actions are allowed then; profile, password, Telegram and logout always stay the owner's own. */
+const ADMIN_NICK = String(process.env.ADMIN_NICK || 'iyakubov').toLowerCase();
+const isAdmin = u => !!u && u.nick_lower === ADMIN_NICK;
+const ACT_OK = /^\/api\/(state|stamp|notifications\/read|challenges(\/.*)?|players\/[^/]+|nick)$/;
 async function auth(req){
   const t = readToken(cookieOf(req) || req.get('X-Pf-Session')); if (!t) return null;
   const r = await q('SELECT * FROM users WHERE id = $1', [t.uid]);
   const u = r.rows[0]; if (!u || u.session_ver !== t.ver) return null;
+  const as = req.get('X-Pf-As');
+  if (as && isAdmin(u)) {
+    if (!ACT_OK.test(req.path)) bad('Сначала вернитесь в свой аккаунт', 403);
+    const d = /^[0-9a-f-]{36}$/i.test(as) && (await q('SELECT * FROM users WHERE id=$1 AND demo', [as])).rows[0];
+    if (!d) bad('Демо-игрок не найден', 404);
+    req.pfOwner = u;
+    return d;
+  }
   return u;
+}
+// what each demo player has waiting: challenges to answer, matches to play or score, scores to confirm
+async function demoList(){
+  return (await q(`SELECT u.id, u.nick, u.city, u.rating, u.wins, u.losses, u.ava_kind, u.ava_fur,
+      (SELECT count(*) FROM matches m WHERE m.b = u.id AND m.status = 'invite')::int AS invites,
+      (SELECT count(*) FROM matches m WHERE (m.a = u.id OR m.b = u.id) AND (
+          (m.status = 'booked' AND m.when_at < now()) OR (m.status = 'check' AND m.reported_by <> u.id)))::int AS todo,
+      (SELECT count(*) FROM matches m WHERE (m.a = u.id OR m.b = u.id) AND m.status IN ('booked','check'))::int AS active
+    FROM users u WHERE u.demo ORDER BY u.rating DESC`)).rows
+    .map(d => ({ id: d.id, name: d.nick, city: d.city, rating: d.rating, w: d.wins, l: d.losses, ava: { k: d.ava_kind, fur: d.ava_fur }, invites: d.invites, todo: d.todo, active: d.active }));
 }
 async function must(req){ const u = await auth(req); if (!u) bad('Войдите в аккаунт', 401); return u; }
 
@@ -486,8 +515,10 @@ app.get('/api/stamp', wrap(async (req, res) => {
       (SELECT coalesce(max(extract(epoch FROM updated_at)), 0) || ':' || count(*) FROM matches
          WHERE (status = 'open' AND when_at > now() - interval '3 hours') OR a = $1 OR b = $1) AS m,
       (SELECT coalesce(max(id), 0) || ':' || count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL) AS n,
-      (SELECT count(*) || ':' || coalesce(sum(rating), 0) FROM users) AS u`, [u.id])).rows[0];
-  res.json({ s: `${r.m}|${r.n}|${r.u}` });
+      (SELECT count(*) || ':' || coalesce(sum(rating), 0) FROM users) AS u,
+      (SELECT CASE WHEN $2 THEN (SELECT coalesce(max(extract(epoch FROM m.updated_at)), 0) || ':' || count(*) FROM matches m
+         JOIN users d ON d.demo AND (d.id = m.a OR d.id = m.b)) ELSE '' END) AS d`, [u.id, isAdmin(req.pfOwner || u)])).rows[0];
+  res.json({ s: `${r.m}|${r.n}|${r.u}|${r.d}` });
 }));
 
 app.get('/api/state', wrap(async (req, res) => {
@@ -502,7 +533,8 @@ app.get('/api/state', wrap(async (req, res) => {
     .map(n => ({ id: +n.id, kind: n.kind, match: n.match_id, actor: n.actor, at: new Date(n.created_at).getTime(), read: !!n.read_at }));
   res.json({ me: pub(u), players, matches: ms.map(m => matchOut(m, u.id)), notes,
     tg: { available: !!(TG && BOT_NAME), bot: BOT_NAME, linked: !!u.tg_chat, city: u.tg_city, mine: u.tg_mine },
-    clubs: await CLUBS.activeClubs(), clubsBot: CLUBS.botName() || null });
+    clubs: await CLUBS.activeClubs(), clubsBot: CLUBS.botName() || null,
+    ...(isAdmin(req.pfOwner || u) ? { owner: true, acting: !!req.pfOwner, demo: await demoList() } : {}) });
 }));
 
 app.post('/api/notifications/read', wrap(async (req, res) => {
