@@ -126,6 +126,7 @@ async function migrate(){
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS delta_l int;
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS reported_at timestamptz;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS region text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS demo boolean NOT NULL DEFAULT false;
     UPDATE users SET region='Ташкентская область' WHERE region='Ташкент';
     CREATE TABLE IF NOT EXISTS notifications (
       id bigserial PRIMARY KEY,
@@ -681,10 +682,46 @@ async function adminDeletes(){
   }
 }
 
+/* admin: SEED_DEMO=1 adds a starter set of players once (marked demo=true; nobody can log in as them).
+   DELETE_DEMO=1 removes every demo player. */
+const DEMO = [ // nick, city, rating, wins, losses, avatar, fur
+  ['Sardor_tt', 'Ташкент', 1142, 9, 4, 'tiger', null], ['Nodir.tt', 'Ташкент', 1089, 6, 3, 'tiger', '#3A3D46'],
+  ['Dilshod', 'Самарканд', 1118, 8, 4, 'eagle', null], ['Jasur.uz', 'Ташкент', 1096, 7, 5, 'wolf', '#3D78C9'],
+  ['Shohruh_spin', 'Ташкент', 1078, 6, 4, 'panther', null], ['Bekzod_07', 'Ташкент', 1061, 6, 5, 'bear', null],
+  ['Ulugbek_88', 'Андижан', 1054, 5, 4, 'bull', null], ['Sherzod_t', 'Чирчик', 1046, 5, 3, 'wolf', null],
+  ['Otabek_pp', 'Ташкент', 1034, 5, 5, 'fox', null], ['Aziza_tt', 'Ташкент', 1023, 4, 3, 'owl', '#C76A9A'],
+  ['Javohir', 'Бухара', 1012, 4, 4, 'lion', null], ['Kamola', 'Ташкент', 1004, 3, 3, 'panda', null],
+  ['Madina.k', 'Наманган', 987, 3, 4, 'raccoon', '#7A5CC9'], ['Farrux', 'Фергана', 968, 2, 4, 'boar', null],
+  ['Islom_ping', 'Самарканд', 951, 2, 5, 'fox', '#5C9E48'],
+];
+async function adminDemo(){
+  try {
+    if (process.env.DELETE_DEMO === '1') {
+      const gone = (await q('DELETE FROM users WHERE demo RETURNING nick')).rows.map(r => r.nick);
+      console.log(`admin demo: removed ${gone.length} demo players`);
+      return;
+    }
+    if (process.env.SEED_DEMO !== '1') return;
+    await q('CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text)');
+    if ((await q(`SELECT 1 FROM settings WHERE key='demo_seeded'`)).rows.length) return;   // only once
+    const added = [];
+    for (const [nick, city, rating, w, l, kind, fur] of DEMO) {
+      const lock = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);          // random, never stored: no one can log in
+      const r = await q(`INSERT INTO users (nick, nick_lower, pass_hash, code_hash, city, region, ava_kind, ava_fur, rating, wins, losses, demo, tg_city, tg_mine)
+        VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,true,false,false) ON CONFLICT (nick_lower) DO NOTHING RETURNING nick`,
+        [nick, nick.toLowerCase(), lock, city, RG.REGION_OF[city] || '', kind, fur, rating, w, l]);
+      if (r.rows.length) added.push(nick);
+    }
+    await q(`INSERT INTO settings (key, value) VALUES ('demo_seeded', now()::text) ON CONFLICT (key) DO NOTHING`);
+    console.log(`admin demo: added ${added.length} players: ${added.join(', ')}`);
+  } catch (e) { console.error('admin demo:', e.message); }
+}
+
 (async () => {
   for (let i = 0; i < 10; i++){ try { await migrate(); break; } catch (e) { console.error('DB not ready:', e.message); await new Promise(r => setTimeout(r, 3000)); if (i === 9) process.exit(1); } }
   await adminKeepOnly();
   await adminDeletes();
+  await adminDemo();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
