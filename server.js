@@ -196,7 +196,7 @@ async function tgPersonal(userId, kind, matchId, actorId){
   if (!u) return;
   let chat = u.tg_chat, pre = '';
   if (u.demo) {   // nobody reads a demo player's messages: the owner gets them, marked with the player's name
-    const o = (await q('SELECT tg_chat FROM users WHERE nick_lower=$1', [ADMIN_NICK])).rows[0];
+    const o = OWNER_ID && (await q('SELECT tg_chat FROM users WHERE id=$1', [OWNER_ID])).rows[0];
     if (!o || !o.tg_chat) return;
     chat = o.tg_chat; pre = `👤 Демо-игрок <b>${h(u.nick)}</b>\n`;
   } else if (!u.tg_chat || !u.tg_mine) return;
@@ -295,10 +295,29 @@ const CLUBS = require('./clubs')({ app, q, wrap, APP_URL, SECRET, RG });
 
 const bad = (msg, status = 400) => { const e = new Error(msg); e.status = status; throw e; };
 
-/* the owner (ADMIN_NICK, default iyakubov) can play for the demo players: the app sends X-Pf-As: <demo id>.
+/* the owner can play for the demo players: the app sends X-Pf-As: <demo id>.
+   The owner is remembered by account id (settings.owner_id), so renaming the account changes nothing.
    Only match actions are allowed then; profile, password, Telegram and logout always stay the owner's own. */
 const ADMIN_NICK = String(process.env.ADMIN_NICK || 'iyakubov').toLowerCase();
-const isAdmin = u => !!u && u.nick_lower === ADMIN_NICK;
+let OWNER_ID = null;
+const isAdmin = u => !!u && !!OWNER_ID && u.id === OWNER_ID;
+// first start: the account called ADMIN_NICK, or else the oldest account (the one kept when everyone else was removed)
+async function findOwner(){
+  try {
+    await q('CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text)');
+    OWNER_ID = ((await q(`SELECT value FROM settings WHERE key='owner_id'`)).rows[0] || {}).value || null;
+    if (OWNER_ID && !(await q('SELECT 1 FROM users WHERE id=$1', [OWNER_ID])).rowCount) OWNER_ID = null;
+    if (!OWNER_ID) {
+      const o = (await q('SELECT id FROM users WHERE nick_lower=$1', [ADMIN_NICK])).rows[0]
+        || (await q('SELECT id FROM users WHERE NOT demo ORDER BY created_at LIMIT 1')).rows[0];
+      if (o) { OWNER_ID = o.id; await q(`INSERT INTO settings (key, value) VALUES ('owner_id', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [o.id]); }
+    }
+    const o = OWNER_ID && (await q('SELECT nick, city, created_at, tg_chat IS NOT NULL AS tg FROM users WHERE id=$1', [OWNER_ID])).rows[0];
+    console.log(o ? `owner: «${o.nick}» (${o.city}, since ${o.created_at.toISOString().slice(0, 10)}, Telegram ${o.tg ? 'linked' : 'not linked'})` : 'owner: none');
+    const all = (await q('SELECT nick, created_at FROM users WHERE NOT demo ORDER BY created_at LIMIT 12')).rows;
+    console.log('accounts (oldest first): ' + all.map(a => `${a.nick} ${a.created_at.toISOString().slice(0, 10)}`).join(', '));
+  } catch (e) { console.error('owner:', e.message); }
+}
 const ACT_OK = /^\/api\/(state|stamp|notifications\/read|challenges(\/.*)?|players\/[^/]+|nick)$/;
 async function auth(req){
   const t = readToken(cookieOf(req) || req.get('X-Pf-Session')); if (!t) return null;
@@ -754,6 +773,7 @@ async function adminDemo(){
   await adminKeepOnly();
   await adminDeletes();
   await adminDemo();
+  await findOwner();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
