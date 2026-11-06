@@ -143,6 +143,9 @@ select.input:invalid{color:var(--muted)}
 .rank-row:last-child{border-bottom:0}
 .rank-row.me{background:var(--ball-soft);margin:0 -18px;padding-left:20px;padding-right:20px;border-bottom-color:transparent}
 .rank-row .sub{color:var(--muted)}
+.rank-row .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board.full{padding:0 4px;border-radius:0;background:none}
+.board.full .rank-row.me{margin:0 -6px;padding-left:8px;padding-right:8px;border-radius:16px}
 .rank-n{font-family:var(--f-big);font-weight:700;width:32px;text-align:center;font-size:1.15rem;color:var(--muted)}
 .rank-row:nth-child(1) .rank-n{color:var(--ball)}
 .rank-r{font-family:var(--f-big);font-weight:700;font-size:1.25rem}
@@ -358,7 +361,8 @@ select.input:invalid{color:var(--muted)}
   .item{min-height:66px;padding:10px 12px}.av{width:44px;height:44px}
   .btn{min-height:56px}
   .list .item:nth-child(n+3){display:none}
-  .rank-row:nth-child(n+5):not(.me){display:none}
+  .board:not(.full) .rank-row:nth-child(n+5):not(.me){display:none}
+  .board:not(.full) .rank-row:nth-child(4):not(:has(~ .me)){border-bottom:0}
 }
 
 /* ---------- PC ---------- */
@@ -941,20 +945,29 @@ function vMatches(){
   </div>`;
 }
 
+const rankList = () => { const city = me().city; return ranked().filter(p => S.rankAll || p.city === city); };
+const rankRow = (p, i) => `<div class="rank-row${p.id === db.me ? ' me' : ''}"><span class="rank-n">${i + 1}</span>${av(p)}<div class="txt" style="flex:1;min-width:0"><p class="nm" style="font-weight:800;line-height:1.2">${p.id === db.me ? 'Вы' : esc(p.name)}</p><p class="sub" style="font-weight:600;font-size:.9rem">${p.w}–${p.l}${S.rankAll && p.city ? ' · ' + esc(p.city) : ''}</p></div><span class="rank-r num">${p.rating}</span></div>`;
 function vRank(){
   const city = me().city;
-  const r = ranked().filter(p => S.rankAll || p.city === city), myR = (() => { const i = r.findIndex(p => p.id === db.me); return i < 0 ? null : i + 1; })(), top = r.slice(0, 6);
-  const row = (p, i) => `<div class="rank-row${p.id === db.me ? ' me' : ''}"><span class="rank-n">${i + 1}</span>${av(p)}<div class="txt" style="flex:1;min-width:0"><p class="nm" style="font-weight:800;line-height:1.2;overflow-wrap:anywhere">${p.id === db.me ? 'Вы' : esc(p.name)}</p><p class="sub" style="font-weight:600;font-size:.9rem">${p.w}–${p.l}${S.rankAll && p.city ? ' · ' + esc(p.city) : ''}</p></div><span class="rank-r num">${p.rating}</span></div>`;
+  const r = rankList(), myR = (() => { const i = r.findIndex(p => p.id === db.me); return i < 0 ? null : i + 1; })(), top = r.slice(0, 6);
   return `
   <div class="top"><h1>Рейтинг</h1></div>
   <div class="seg light"><button data-a="rk:city" aria-pressed="${!S.rankAll}">${esc(city || 'Мой город')}</button><button data-a="rk:all" aria-pressed="${S.rankAll}">Все города</button></div>
   ${!r.length ? `<div class="empty"><b>Здесь пока пусто</b>В вашем городе ещё никто не сыграл</div>` : ''}
   ${r.length ? `<div class="board">
-    ${top.map(row).join('')}
-    ${myR && myR > 6 ? row(me(), myR - 1) : ''}
+    ${top.map(rankRow).join('')}
+    ${myR && myR > 6 ? rankRow(me(), myR - 1) : ''}
   </div>` : ''}
+  ${r.length > 4 ? `<button class="btn alt" data-a="rank-more">Весь рейтинг · ${plural(r.length, 'игрок', 'игрока', 'игроков')}</button>` : ''}
   ${!myR ? `<p class="hint">Сыграйте первый матч, чтобы попасть в рейтинг</p>` : ''}
   <button class="link-btn" data-a="rules">Как считается рейтинг?</button>`;
+}
+// the whole list in a sheet; your own row is scrolled into view
+function openRankList(){
+  const r = rankList();
+  sheet(`${head(S.rankAll ? 'Рейтинг · все города' : 'Рейтинг · ' + esc(me().city || 'мой город'))}
+    <div class="board full">${r.map(rankRow).join('')}</div>`);
+  setTimeout(() => document.querySelector('.sheet .rank-row.me')?.scrollIntoView({ block: 'center' }), 60);
 }
 
 function vMe(){
@@ -1482,6 +1495,7 @@ document.addEventListener('click', e => {
     case 'tg-off': api('/api/tg/unlink', {}).then(() => { S.tg.linked = false; S.tg.pending = false; paintTg(); toast('Бот отключён'); }).catch(ex => toast(ex.message)); break;
     case 'note': close(); S.notesShown = null; S.view = b; render(); break;
     case 'perm': try { Notification.requestPermission().then(() => drawNotes()); } catch(e){} break;
+    case 'rank-more': openRankList(); break;
     case 'rules': openRules(); break;
     case 'ava': openAva(false); break;
     case 'ak': A.k = b; drawAva(); break;
