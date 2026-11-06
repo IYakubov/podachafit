@@ -293,7 +293,7 @@ select.input:invalid{color:var(--muted)}
 .tg-card .btn.link{color:var(--muted)}
 
 /* ---------- sheet ---------- */
-.scrim{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.scrim{position:fixed;left:0;right:0;top:var(--vvt,0px);height:var(--vvh,100%);background:var(--scrim);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
 .sheet{width:100%;max-width:560px;background:var(--sheet);color:var(--ink);border-radius:30px 30px 0 0;padding:22px max(20px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:18px;max-height:100%;overflow:auto;animation:up .2s ease}
 .sheet-head{display:flex;justify-content:space-between;align-items:center}
 .sheet-head h2{font-size:1.5rem;font-weight:700}
@@ -1231,7 +1231,20 @@ function openPlacePicker(){
       <button class="pick own" data-a="place-type"><b>✏️ Ввести своё место</b></button></div>
     ${S.clubsBot ? `<button class="pick-foot" data-a="club-add">👇 Есть свой клуб? Добавьте его — игроки придут играть</button>` : ''}`);
 }
-function typePlace(){ const i = $('#n-place'); if (!i) return; i.removeAttribute('readonly'); delete i.dataset.a; i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
+function typePlace(){ const i = $('#n-place'); if (!i) return; i.blur(); i.removeAttribute('readonly'); delete i.dataset.a; i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
+/* phone keyboard: keep the open sheet above it and the field being typed in visible */
+function fitViewport(){
+  const vv = window.visualViewport; if (!vv) return;
+  const r = document.documentElement.style;
+  r.setProperty('--vvh', Math.round(vv.height) + 'px'); r.setProperty('--vvt', Math.round(vv.offsetTop) + 'px');
+  showFocused();
+}
+function showFocused(){
+  const f = document.activeElement;
+  if (f && /^(INPUT|TEXTAREA)$/.test(f.tagName) && !f.readOnly && f.closest('.sheet')) f.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+if (window.visualViewport){ visualViewport.addEventListener('resize', fitViewport); visualViewport.addEventListener('scroll', fitViewport); }
+document.addEventListener('focusin', e => { if (e.target.closest && e.target.closest('.sheet')) { setTimeout(showFocused, 350); setTimeout(showFocused, 700); } });
 function keepNew(){ if ($('#who-q')) C.q = $('#who-q').value; C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function dueText(m){
   if (!m.due) return 'завтра';
@@ -1371,7 +1384,7 @@ document.addEventListener('click', e => {
     case 'club': { const c = (db.clubs || []).find(x => String(x.id) === b); if (c && $('#n-place')) { $('#n-place').value = `${c.name}, ${c.address}`; C.place = $('#n-place').value; } closePop(); break; }
     case 'pop-close': if (e.target === el && Date.now() - (S.popAt || 0) > 400) closePop(); break;
     // «Где» tapped: clubs picker, or the one-time invitation for club owners (opened on click, so it works the same on phones)
-    case 'place-open': if (!placePop()) { typePlace(); break; } if (cityClubs().length) openPlacePicker(); else openClubInvite(); break;
+    case 'place-open': if (!placePop()) { typePlace(); break; } el.blur(); if (cityClubs().length) openPlacePicker(); else openClubInvite(); break;
     case 'place-type': markPopSeen(); closePop(); typePlace(); break;
     case 'club-add': {
       markPopSeen(); closePop();
@@ -1505,6 +1518,7 @@ async function boot(){
     if (TGW){
       try { TGW.ready(); TGW.expand(); } catch(e){}
       try { TGW.onEvent('activated', () => refresh(true)); } catch(e){}
+      try { TGW.onEvent('viewportChanged', fitViewport); } catch(e){}
       try { TGW.setHeaderColor('#1D4E9E'); TGW.setBackgroundColor('#1D4E9E'); if (TGW.setBottomBarColor) TGW.setBottomBarColor('#0E2757'); } catch(e){}
       try { if (TGW.disableVerticalSwipes) TGW.disableVerticalSwipes(); } catch(e){}
       try { TGW.BackButton.onClick(() => { if (document.querySelector('.scrim')) close(); else { S.view = 'home'; render(); } }); } catch(e){}
