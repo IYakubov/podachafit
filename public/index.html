@@ -1145,7 +1145,7 @@ function drawNew(){
         <span class="colon2">:</span>
         ${wheel('w-min', Array.from({ length: 60 }, (_, i) => pad2(i)), C.min)}
       </div></div>
-    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Где вы бросаете вызов?" value="${esc(C.place || '')}"></div>
+    <div class="group"><label for="n-place">Где</label><input class="input" id="n-place" placeholder="Где вы бросаете вызов?" value="${esc(C.place || '')}"${placePop() ? ' readonly data-a="place-open"' : ''}></div>
     <div class="group"><label>Игра</label><div class="seg">${[3, 5].map(b => `<button data-a="bo:${b}" aria-pressed="${C.bo === b}">До ${need(b)} побед</button>`).join('')}</div></div>
     ${contactBlock(C.ct)}
     <p class="err" id="n-err"></p>
@@ -1212,10 +1212,12 @@ function drawAva(){
 /* clubs under «Где»: listed clubs of my city fill the field in one tap; the dashed slot invites owners to the clubs bot */
 /* «Где»: listed clubs open as a picker; while there are none, the first tap shows a one-time invitation to club owners */
 const cityClubs = () => { const m = me(), r = regionOf(m); return (db.clubs || []).filter(c => c.city === m.city || (r && c.region === r)).sort((a, b) => (a.city === m.city ? 0 : 1) - (b.city === m.city ? 0 : 1)); };
-const POP_KEY = 'pf_club_pop';
+const POP_KEY = 'pf_club_pop2';
+// the field stays read-only (no keyboard) while a tap should open the clubs picker or the one-time invitation
+const placePop = () => cityClubs().length > 0 || (!!S.clubsBot && !popSeen());
 const popSeen = () => { try { return localStorage.getItem(POP_KEY) === '1'; } catch (e) { return !!S.popSeen; } };
 const markPopSeen = () => { S.popSeen = true; try { localStorage.setItem(POP_KEY, '1'); } catch (e) {} };
-function pop(html){ closePop(); document.body.insertAdjacentHTML('beforeend', `<div class="pop-scrim" data-a="pop-close"><div class="pop" role="dialog" aria-modal="true">${html}</div></div>`); }
+function pop(html){ closePop(); S.popAt = Date.now(); document.body.insertAdjacentHTML('beforeend', `<div class="pop-scrim" data-a="pop-close"><div class="pop" role="dialog" aria-modal="true">${html}</div></div>`); }
 function closePop(){ document.querySelector('.pop-scrim')?.remove(); }
 function openClubInvite(){
   pop(`<span class="pop-ic">🏓</span><h3>Есть свой клуб?</h3><p>Добавьте его в список — игроки придут к вам играть.</p>
@@ -1229,6 +1231,7 @@ function openPlacePicker(){
       <button class="pick own" data-a="place-type"><b>✏️ Ввести своё место</b></button></div>
     ${S.clubsBot ? `<button class="pick-foot" data-a="club-add">👇 Есть свой клуб? Добавьте его — игроки придут играть</button>` : ''}`);
 }
+function typePlace(){ const i = $('#n-place'); if (!i) return; i.removeAttribute('readonly'); delete i.dataset.a; i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) {} }
 function keepNew(){ if ($('#who-q')) C.q = $('#who-q').value; C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function dueText(m){
   if (!m.due) return 'завтра';
@@ -1346,13 +1349,6 @@ function openRules(){
 function toast(t){ document.querySelector('.toast')?.remove(); const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 2600); }
 
 /* ---------- actions ---------- */
-// «Где»: clubs picker, or the one-time invitation for club owners
-document.addEventListener('focusin', e => {
-  if (!e.target || e.target.id !== 'n-place') return;
-  if (S.placeSkip) { S.placeSkip = false; return; }
-  if (cityClubs().length) { e.target.blur(); openPlacePicker(); }
-  else if (S.clubsBot && !popSeen()) { e.target.blur(); openClubInvite(); }
-});
 // live player search in «Новый вызов»: only the results list is redrawn, so the keyboard stays open
 document.addEventListener('input', e => {
   if (e.target && e.target.id === 'who-q') { C.q = e.target.value; const r = $('#who-res'); if (r) r.innerHTML = whoResults(C.q); }
@@ -1373,8 +1369,10 @@ document.addEventListener('click', e => {
     case 'who': keepNew(); C.who = b || null; C.mode = b ? 'one' : 'all'; drawNew(); break;
     case 'whomode': keepNew(); C.mode = b; if (b === 'all') C.who = null; drawNew(); if (b === 'one' && !C.who) setTimeout(() => $('#who-q')?.focus(), 30); break;
     case 'club': { const c = (db.clubs || []).find(x => String(x.id) === b); if (c && $('#n-place')) { $('#n-place').value = `${c.name}, ${c.address}`; C.place = $('#n-place').value; } closePop(); break; }
-    case 'pop-close': if (e.target === el) closePop(); break;
-    case 'place-type': markPopSeen(); closePop(); S.placeSkip = true; setTimeout(() => { const i = $('#n-place'); if (i) { i.focus(); i.select && i.select(); } }, 30); break;
+    case 'pop-close': if (e.target === el && Date.now() - (S.popAt || 0) > 400) closePop(); break;
+    // «Где» tapped: clubs picker, or the one-time invitation for club owners (opened on click, so it works the same on phones)
+    case 'place-open': if (!placePop()) { typePlace(); break; } if (cityClubs().length) openPlacePicker(); else openClubInvite(); break;
+    case 'place-type': markPopSeen(); closePop(); typePlace(); break;
     case 'club-add': {
       markPopSeen(); closePop();
       const url = `https://t.me/${S.clubsBot}?start=app`;
