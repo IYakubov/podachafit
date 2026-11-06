@@ -301,6 +301,19 @@ const bad = (msg, status = 400) => { const e = new Error(msg); e.status = status
 const ADMIN_NICK = String(process.env.ADMIN_NICK || 'iyakubov').toLowerCase();
 let OWNER_ID = null;
 const isAdmin = u => !!u && !!OWNER_ID && u.id === OWNER_ID;
+/* admin: CLEAR_ACTIVE=<any word> deletes every match that isn't finished (open, invites, booked, waiting for a score) once
+   for that word; finished matches, ratings and accounts stay. Their notifications go too (ON DELETE CASCADE). */
+async function adminClearActive(){
+  const tag = String(process.env.CLEAR_ACTIVE || '').trim(); if (!tag) return;
+  try {
+    await q('CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text)');
+    if ((await q(`SELECT 1 FROM settings WHERE key=$1`, ['clear_active:' + tag])).rows.length) return;
+    const gone = (await q(`DELETE FROM matches m WHERE m.status IN ('open','invite','booked','check')
+        RETURNING m.status, (SELECT nick FROM users WHERE id=m.a) AS a, (SELECT nick FROM users WHERE id=m.b) AS b`)).rows;
+    await q(`INSERT INTO settings (key, value) VALUES ($1, now()::text) ON CONFLICT (key) DO NOTHING`, ['clear_active:' + tag]);
+    console.log(`admin clear-active: deleted ${gone.length} matches` + (gone.length ? ': ' + gone.map(g => `${g.a} – ${g.b || 'любой'} (${g.status})`).join(', ') : ''));
+  } catch (e) { console.error('admin clear-active:', e.message); }
+}
 // first start: the account called ADMIN_NICK, or else the oldest account (the one kept when everyone else was removed)
 async function findOwner(){
   try {
@@ -774,6 +787,7 @@ async function adminDemo(){
   await adminDeletes();
   await adminDemo();
   await findOwner();
+  await adminClearActive();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
