@@ -37,6 +37,8 @@ p{margin:0}
 
 /* pinned to the visible screen: works the same in Safari, Chrome and in-app browsers, whatever their toolbars do */
 #app{position:fixed;inset:0;display:flex;z-index:1;overflow:hidden}
+/* sign-up/login: while the keyboard is open, fit the screen to the part above it so the field can scroll into view */
+body.kb-auth #app{top:var(--vvt,0px);bottom:auto;height:var(--vvh,100%)}
 body.in::after{display:none}
 /* table lines: white edge + centre line, like a real table seen from above */
 body::after{content:"";position:fixed;inset:max(12px,env(safe-area-inset-top,0px)) 12px 12px;border:3px solid var(--line-w);border-radius:4px;pointer-events:none;z-index:0;background:linear-gradient(to right,transparent calc(50% - 1.5px),var(--line-w) calc(50% - 1.5px),var(--line-w) calc(50% + 1.5px),transparent calc(50% + 1.5px))}
@@ -1274,12 +1276,15 @@ function fitViewport(){
   r.setProperty('--vvh', Math.round(vv.height) + 'px'); r.setProperty('--vvt', Math.round(vv.offsetTop) + 'px');
   showFocused();
 }
+function kbField(f){ return f && /^(INPUT|TEXTAREA)$/.test(f.tagName) && !f.readOnly && f.closest('.sheet, .auth'); }
 function showFocused(){
   const f = document.activeElement;
-  if (f && /^(INPUT|TEXTAREA)$/.test(f.tagName) && !f.readOnly && f.closest('.sheet')) f.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  document.body.classList.toggle('kb-auth', !!(kbField(f) && f.closest('.auth')));
+  if (kbField(f)) f.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 if (window.visualViewport){ visualViewport.addEventListener('resize', fitViewport); visualViewport.addEventListener('scroll', fitViewport); }
-document.addEventListener('focusin', e => { if (e.target.closest && e.target.closest('.sheet')) { setTimeout(showFocused, 350); setTimeout(showFocused, 700); } });
+document.addEventListener('focusin', e => { if (kbField(e.target)) { showFocused(); setTimeout(showFocused, 350); setTimeout(showFocused, 700); } });
+document.addEventListener('focusout', () => setTimeout(() => { if (!kbField(document.activeElement)) document.body.classList.remove('kb-auth'); }, 100));
 function keepNew(){ if ($('#who-q')) C.q = $('#who-q').value; C.place = $('#n-place')?.value; if ($('#c-val')) C.ct.val = $('#c-val').value; readWheels(); }
 function dueText(m){
   if (!m.due) return 'завтра';
