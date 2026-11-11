@@ -261,7 +261,7 @@ function clearSession(res){ res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; Htt
 
 /* ---------------- brute-force guard (per nickname, no IPs stored) ---------------- */
 const fails = new Map();
-function tooMany(key){ const f = fails.get(key); return f && f.n >= 8 && Date.now() - f.t < 15 * 60e3; }
+function tooMany(key){ const f = fails.get(key); return f && f.n >= 5 && Date.now() - f.t < 15 * 60e3; }
 function failed(key){ const f = fails.get(key); if (!f || Date.now() - f.t > 15 * 60e3) fails.set(key, { n: 1, t: Date.now() }); else f.n++; }
 
 /* ---------------- app ---------------- */
@@ -392,9 +392,9 @@ app.post('/api/register', wrap(async (req, res) => {
 
 app.post('/api/login', wrap(async (req, res) => {
   const nick = String(req.body.nick || '').trim().replace(/^@/, '').toLowerCase(), pass = String(req.body.pass || '');
-  if (tooMany('l:' + nick)) bad('Слишком много попыток. Подождите 15 минут', 429);
+  if (tooMany('l:' + nick)) bad('Вы слишком много раз ввели неверный пароль. Попробуйте ещё раз через 15 минут', 429);
   const u = (await q('SELECT * FROM users WHERE nick_lower = $1', [nick])).rows[0];
-  if (!u || !(await bcrypt.compare(pass, u.pass_hash))) { failed('l:' + nick); bad('Неверный никнейм или пароль', 401); }
+  if (!u || !(await bcrypt.compare(pass, u.pass_hash))) { failed('l:' + nick); if (tooMany('l:' + nick)) bad('Вы слишком много раз ввели неверный пароль. Попробуйте ещё раз через 15 минут', 429); bad('Неверный никнейм или пароль', 401); }
   fails.delete('l:' + nick); setSession(res, u.id, u.session_ver); res.json({ me: pub(u) });
 }));
 
@@ -415,8 +415,8 @@ app.post('/api/logout', (req, res) => { clearSession(res); res.json({ ok: true }
 app.post('/api/password', wrap(async (req, res) => {
   const u = await must(req);
   const old = String(req.body.old || ''), pass = String(req.body.pass || '');
-  if (tooMany('p:' + u.id)) bad('Слишком много попыток. Подождите 15 минут', 429);
-  if (!(await bcrypt.compare(old, u.pass_hash))) { failed('p:' + u.id); bad('Текущий пароль неверный'); }
+  if (tooMany('p:' + u.id)) bad('Вы слишком много раз ввели неверный пароль. Попробуйте ещё раз через 15 минут', 429);
+  if (!(await bcrypt.compare(old, u.pass_hash))) { failed('p:' + u.id); if (tooMany('p:' + u.id)) bad('Вы слишком много раз ввели неверный пароль. Попробуйте ещё раз через 15 минут', 429); bad('Текущий пароль неверный'); }
   if (pass.length < 6 || pass.length > 100) bad('Новый пароль — минимум 6 символов');
   fails.delete('p:' + u.id);
   // signs out every other device; this one gets a fresh session
