@@ -339,6 +339,33 @@ async function findOwner(){
     console.log('accounts (oldest first): ' + all.map(a => `${a.nick} ${a.created_at.toISOString().slice(0, 10)}`).join(', '));
   } catch (e) { console.error('owner:', e.message); }
 }
+/* admin: INSPECT_NICK=<nick> prints one account's history to the logs on start (read-only) */
+async function adminInspect(){
+  const nick = String(process.env.INSPECT_NICK || '').trim().toLowerCase(); if (!nick) return;
+  try {
+    let u = (await q('SELECT * FROM users WHERE nick_lower=$1', [nick])).rows[0];
+    if (!u) { const like = (await q(`SELECT nick FROM users WHERE nick_lower LIKE $1 LIMIT 20`, ['%' + nick + '%'])).rows; console.log(`inspect «${nick}»: not found` + (like.length ? '; similar: ' + like.map(x => x.nick).join(', ') : '')); return; }
+    const own = (await q('SELECT tg_id FROM tg_owners WHERE user_id=$1', [u.id])).rows[0];
+    console.log(`inspect «${u.nick}»: created ${u.created_at.toISOString()}, ${u.city}, rating ${u.rating}, ${u.wins}W/${u.losses}L, demo ${u.demo}, Telegram ${u.tg_chat ? 'linked' : 'not linked'}${own ? ', owns tg ' + String(own.tg_id).slice(-4).padStart(8, '*') : ''}`);
+    const ms = (await q(`SELECT m.*, ua.nick AS na, ub.nick AS nb, ua.created_at AS ca_at, ub.created_at AS cb_at,
+        (SELECT nick FROM users WHERE id=m.reported_by) AS rep, (SELECT nick FROM users WHERE id=m.winner) AS win
+      FROM matches m JOIN users ua ON ua.id=m.a LEFT JOIN users ub ON ub.id=m.b WHERE m.a=$1 OR m.b=$1 ORDER BY m.created_at`, [u.id])).rows;
+    console.log(`inspect «${u.nick}»: ${ms.length} matches`);
+    const t = d => d ? new Date(d).toISOString().slice(5, 16).replace('T', ' ') : '—';
+    for (const m of ms) {
+      const opp = m.a === u.id ? { n: m.nb, at: m.cb_at } : { n: m.na, at: m.ca_at };
+      const mins = (a, b) => a && b ? Math.round((new Date(b) - new Date(a)) / 6e4) + 'm' : '?';
+      console.log(`  ${t(m.created_at)} ${m.a === u.id ? 'made' : 'took'} vs «${opp.n || '—'}» (acc. made ${t(opp.at)}) status ${m.status}` +
+        (m.sa != null ? ` score ${m.sa}:${m.sb} by ${m.rep || '?'} winner ${m.win || '—'} Δ${m.delta ?? '—'}` : '') +
+        ` | accept→score ${mins(m.accepted_at, m.reported_at)}, made→done ${m.status === 'done' ? mins(m.created_at, m.updated_at) : '—'}`);
+    }
+    const opps = (await q(`SELECT o.nick, o.created_at, o.rating, o.wins, o.losses, o.tg_chat IS NOT NULL AS tg,
+        (SELECT count(*) FROM matches x WHERE (x.a=o.id OR x.b=o.id))::int AS all_m,
+        (SELECT count(*) FROM matches x WHERE (x.a=o.id AND x.b=$1) OR (x.b=o.id AND x.a=$1))::int AS with_him
+      FROM users o WHERE o.id IN (SELECT CASE WHEN a=$1 THEN b ELSE a END FROM matches WHERE (a=$1 OR b=$1) AND b IS NOT NULL)`, [u.id])).rows;
+    for (const o of opps) console.log(`  opponent «${o.nick}»: made ${t(o.created_at)}, rating ${o.rating}, ${o.wins}W/${o.losses}L, Telegram ${o.tg ? 'linked' : 'not linked'}, matches ${o.all_m} (with him ${o.with_him})`);
+  } catch (e) { console.error('inspect:', e.message); }
+}
 const ACT_OK = /^\/api\/(state|stamp|notifications\/read|challenges(\/.*)?|players\/[^/]+|nick)$/;
 async function auth(req){
   const t = readToken(cookieOf(req) || req.get('X-Pf-Session')); if (!t) return null;
@@ -387,8 +414,10 @@ async function tgOwner(tgId){ return (await q('SELECT o.user_id, u.nick FROM tg_
 const tgTaken = nick => `С этого Telegram уже создан аккаунт «${nick}». Войдите в него. Если забыли пароль — нажмите «Забыли пароль?»`;
 
 app.post('/api/register', wrap(async (req, res) => {
+  // new accounts only from the Telegram Mini App: every account belongs to one Telegram account
   const tu = req.body.initData ? tgWebAppUser(req.body.initData) : null;
-  if (tu) { const own = await tgOwner(tu.id); if (own) bad(tgTaken(own.nick), 409); }
+  if (!tu) bad(`Новые аккаунты создаются только в Telegram: откройте @${BOT_NAME || 'podachafitbot'} и нажмите «Играть»`, 403);
+  { const own = await tgOwner(tu.id); if (own) bad(tgTaken(own.nick), 409); }
   const nick = String(req.body.nick || '').trim().replace(/^@/, ''), pass = String(req.body.pass || '');
   { const ne = nickError(nick); if (ne) bad(ne); }
   if (RESERVED.includes(nick.toLowerCase())) bad('Этот никнейм уже существует. Выберите другой');
@@ -810,6 +839,7 @@ async function adminDemo(){
   await adminDemo();
   await findOwner();
   await adminClearActive();
+  await adminInspect();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));

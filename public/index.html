@@ -806,7 +806,7 @@ function renderAuth(){
     </div>
     <div class="auth-bottom">
       ${mode === 'start' ? `
-        <button class="btn main" data-a="auth:reg">Создать аккаунт</button>
+        <button class="btn main" data-a="${IN_TG ? 'auth:reg' : 'reg-tg'}">Создать аккаунт</button>
         <button class="btn ghost" data-a="auth:login">Войти</button>
         <button class="btn link" data-a="about">О проекте</button>
       ` : `
@@ -817,7 +817,7 @@ function renderAuth(){
         <button class="btn main" type="submit">${mode === 'reg' ? 'Начать играть' : mode === 'login' ? 'Войти' : 'Сохранить пароль'}</button>
         <div class="auth-links">
           ${mode === 'login' ? `<button class="btn link" type="button" data-a="auth:reset">Забыли пароль?</button>` : ''}
-          <button class="btn link" type="button" data-a="auth:${mode === 'reg' ? 'login' : mode === 'login' ? 'reg' : 'login'}">${mode === 'reg' ? 'Уже есть аккаунт? Войти' : mode === 'login' ? 'Нет аккаунта? Создать' : 'Вернуться ко входу'}</button>
+          <button class="btn link" type="button" data-a="${mode === 'login' && !IN_TG ? 'reg-tg' : 'auth:' + (mode === 'reg' ? 'login' : mode === 'login' ? 'reg' : 'login')}">${mode === 'reg' ? 'Уже есть аккаунт? Войти' : mode === 'login' ? 'Нет аккаунта? Создать' : 'Вернуться ко входу'}</button>
         </div>
       </form>`}
     </div>
@@ -1490,6 +1490,9 @@ document.addEventListener('click', e => {
     }
     case 'score-anyway': closePop(); openScore(b); break;
     case 'pop-x': closePop(); break;
+    case 'reg-tg': pop(`<span class="pop-ic">🏓</span><h3>Аккаунт создаётся в Telegram</h3><p>Откройте нашего бота @podachafitbot, нажмите «Играть» и создайте аккаунт там. Потом можно входить и на сайте.</p>
+        <a class="btn main" href="https://t.me/podachafitbot" target="_blank" rel="noopener">Открыть @podachafitbot</a>
+        <button class="btn alt" data-a="pop-x">Отмена</button>`); break;
     case 'sc': { const n = need(C.bo); C[b] = Math.max(0, Math.min(n, C[b] + +c)); drawScore(); break; }
     case 'save-score': {
       const mm = db.matches.find(x => x.id === C.mid), opp = P(other(mm));
