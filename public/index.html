@@ -835,7 +835,7 @@ function renderAuth(){
         if (loc.error) return err(loc.error);
         if (pass.length < 6) return err('Пароль — минимум 6 символов');
         btn.disabled = true;
-        const r = await api('/api/register', { nick, region: loc.region, city: loc.city, pass, ava: randAva() });
+        const r = await api('/api/register', { nick, region: loc.region, city: loc.city, pass, ava: randAva(), initData: tgInitData() || undefined });
         await tgAutoLink();
         S.view = 'home'; await load(); openCode(r.code); return;
       }
@@ -1477,7 +1477,19 @@ document.addEventListener('click', e => {
     }
     case 'code-ok': close(); if (b !== '1') openAva(true); break;
     case 'cancel': act(`/api/challenges/${b}/cancel`, {}, 'Отменено', () => { if ($('.chw')) close(); }).catch(() => {}); break;
-    case 'score': openScore(b); break;
+    case 'score': {
+      const sm = db.matches.find(x => x.id === b);
+      // a real game takes longer than this: ask, but let them go on
+      if (sm && sm.acc && Date.now() - sm.acc < 10 * 60e3) {
+        pop(`<span class="pop-ic">🏓</span><h3>Уже сыграли?</h3><p>Вы приняли вызов всего ${Math.max(1, Math.round((Date.now() - sm.acc) / 60e3))} мин. назад. Как вы так быстро успели? 😄</p>
+          <button class="btn main" data-a="score-anyway:${b}">Ввести всё равно</button>
+          <button class="btn alt" data-a="pop-x">Отмена</button>`);
+        break;
+      }
+      openScore(b); break;
+    }
+    case 'score-anyway': closePop(); openScore(b); break;
+    case 'pop-x': closePop(); break;
     case 'sc': { const n = need(C.bo); C[b] = Math.max(0, Math.min(n, C[b] + +c)); drawScore(); break; }
     case 'save-score': {
       const mm = db.matches.find(x => x.id === C.mid), opp = P(other(mm));

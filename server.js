@@ -142,6 +142,14 @@ async function migrate(){
     ALTER TABLE users ADD COLUMN IF NOT EXISTS tg_city boolean NOT NULL DEFAULT true;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS tg_mine boolean NOT NULL DEFAULT true;
     CREATE INDEX IF NOT EXISTS users_tg_city_idx ON users(city) WHERE tg_chat IS NOT NULL;
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS accepted_at timestamptz;
+    -- one account per Telegram: the first account made or linked from a Telegram account owns it for good
+    CREATE TABLE IF NOT EXISTS tg_owners (
+      tg_id bigint PRIMARY KEY,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    INSERT INTO tg_owners (tg_id, user_id) SELECT tg_chat, id FROM users WHERE tg_chat IS NOT NULL ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS tg_links (
       code text PRIMARY KEY,
       user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -367,6 +375,7 @@ function matchOut(m, me){
     ca: showContacts || (mine && m.a === me) ? m.ca : undefined,
     cb: showContacts || (mine && m.b === me) ? m.cb : undefined,
     sa: m.sa, sb: m.sb, by: m.reported_by, winner: m.winner, d: m.delta, dl: m.delta_l == null ? m.delta : m.delta_l,
+    acc: m.accepted_at ? new Date(m.accepted_at).getTime() : undefined,
     due: m.status === 'check' ? new Date(m.reported_at || m.updated_at).getTime() + SCORE_WAIT_MS : undefined
   };
 }
@@ -374,7 +383,12 @@ function matchOut(m, me){
 /* ---- auth ---- */
 app.get('/api/me', wrap(async (req, res) => { const u = await auth(req); res.json({ me: u ? pub(u) : null }); }));
 
+async function tgOwner(tgId){ return (await q('SELECT o.user_id, u.nick FROM tg_owners o JOIN users u ON u.id = o.user_id WHERE o.tg_id = $1', [tgId])).rows[0]; }
+const tgTaken = nick => `С этого Telegram уже создан аккаунт «${nick}». Войдите в него. Если забыли пароль — нажмите «Забыли пароль?»`;
+
 app.post('/api/register', wrap(async (req, res) => {
+  const tu = req.body.initData ? tgWebAppUser(req.body.initData) : null;
+  if (tu) { const own = await tgOwner(tu.id); if (own) bad(tgTaken(own.nick), 409); }
   const nick = String(req.body.nick || '').trim().replace(/^@/, ''), pass = String(req.body.pass || '');
   { const ne = nickError(nick); if (ne) bad(ne); }
   if (RESERVED.includes(nick.toLowerCase())) bad('Этот никнейм уже существует. Выберите другой');
@@ -386,7 +400,9 @@ app.post('/api/register', wrap(async (req, res) => {
   try {
     const r = await q(`INSERT INTO users (nick, nick_lower, pass_hash, code_hash, city, region, ava_kind) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [nick, nick.toLowerCase(), await bcrypt.hash(pass, 10), await bcrypt.hash(code, 10), city, region, kind]);
-    const u = r.rows[0]; setSession(res, u.id, u.session_ver); res.json({ me: pub(u), code });
+    const u = r.rows[0];
+    if (tu) await q('INSERT INTO tg_owners (tg_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tu.id, u.id]);
+    setSession(res, u.id, u.session_ver); res.json({ me: pub(u), code });
   } catch (e) { if (e.code === '23505') bad('Этот никнейм уже существует. Выберите другой'); throw e; }
 }));
 
@@ -485,6 +501,9 @@ app.post('/api/tg/webapp/link', wrap(async (req, res) => {
   const u = await must(req);
   const tu = tgWebAppUser(req.body.initData);
   if (!tu) bad('Не удалось проверить данные Telegram', 401);
+  const own = await tgOwner(tu.id);
+  if (own && own.user_id !== u.id) bad(`Этот Telegram уже привязан к аккаунту «${own.nick}»`, 409);
+  await q('INSERT INTO tg_owners (tg_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tu.id, u.id]);
   await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1 AND id<>$2', [tu.id, u.id]);
   const already = u.tg_chat && +u.tg_chat === tu.id;
   await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1', [u.id, tu.id]);
@@ -534,6 +553,9 @@ app.post('/tg/:hook', wrap(async (req, res) => {
   }
   const link = (await q(`DELETE FROM tg_links WHERE code=$1 AND expires_at > now() RETURNING user_id`, [code])).rows[0];
   if (!link) return tgSend(chat, 'Ссылка устарела. Просто нажмите «Играть» внизу чата — и войдите в Подачу прямо здесь.', 'Играть');
+  { const own = await tgOwner(chat);
+    if (own && own.user_id !== link.user_id) return tgSend(chat, `Этот Telegram уже привязан к аккаунту <b>${h(own.nick)}</b>. Второй аккаунт привязать нельзя.`, 'Играть');
+    await q('INSERT INTO tg_owners (tg_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [chat, link.user_id]); }
   await q('UPDATE users SET tg_chat=NULL WHERE tg_chat=$1', [chat]);
   const u = (await q('UPDATE users SET tg_chat=$2, tg_city=true, tg_mine=true WHERE id=$1 RETURNING nick, city', [link.user_id, chat])).rows[0];
   tgSend(chat, `Готово, <b>${h(u.nick)}</b>! 🏓\nТеперь всё прямо в Telegram — нажмите «Играть» внизу чата.\n\nЯ пришлю:\n• новые вызовы в городе ${h(u.city)}\n• вызовы вам, принятые матчи и счета\n\n/stop — отключить уведомления.`, 'Играть');
@@ -614,7 +636,7 @@ app.post('/api/challenges/:id/accept', wrap(async (req, res) => {
     const m = await lockMatch(db, req.params.id);
     const ok = (m.status === 'open' && m.a !== u.id) || (m.status === 'invite' && m.b === u.id);
     if (!ok) bad('Этот вызов уже неактуален');
-    await db.query(`UPDATE matches SET b=$2, cb=$3, status='booked', updated_at=now() WHERE id=$1`, [m.id, u.id, c]);
+    await db.query(`UPDATE matches SET b=$2, cb=$3, status='booked', accepted_at=now(), updated_at=now() WHERE id=$1`, [m.id, u.id, c]);
     await notify(db, m.a, 'accepted', m.id, u.id);
   });
   res.json({ ok: true });
