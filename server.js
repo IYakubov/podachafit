@@ -387,6 +387,18 @@ async function adminRegions(){
     for (const m of out) console.log(`  ${m.created_at.toISOString().slice(5, 16)} «${m.a}» (${m.ca}) vs «${m.b || '—'}»${m.cb ? ' (' + m.cb + ')' : ''} [${m.status}] at ${m.place}${m.sa != null ? ` score ${m.sa}:${m.sb}` : ''}`);
   } catch (e) { console.error('regions:', e.message); }
 }
+/* admin: RECENT_CHALLENGES=<hours> prints the challenges created in the last N hours to the logs on start (read-only) */
+async function adminRecent(){
+  const h = parseInt(process.env.RECENT_CHALLENGES || '', 10); if (!(h > 0)) return;
+  try {
+    const r = (await q(`SELECT m.created_at, m.when_at, m.status, m.place, m.bo, ua.nick AS a, ua.city AS ca, ub.nick AS b, ub.city AS cb
+      FROM matches m JOIN users ua ON ua.id = m.a LEFT JOIN users ub ON ub.id = m.b
+      WHERE m.created_at > now() - $1::int * interval '1 hour' ORDER BY m.created_at`, [h])).rows;
+    const t = d => new Date(new Date(d).getTime() + 5 * 3600e3).toISOString().slice(5, 16).replace('T', ' ');
+    console.log(`recent: ${r.length} challenges in the last ${h} h (Tashkent time)`);
+    for (const m of r) console.log(`  made ${t(m.created_at)} by «${m.a}» (${m.ca}) → ${m.b ? '«' + m.b + '» (' + m.cb + ')' : 'anyone'} | play ${t(m.when_at)} at «${m.place}», to ${m.bo === 5 ? 3 : 2} wins | ${m.status}`);
+  } catch (e) { console.error('recent:', e.message); }
+}
 const ACT_OK = /^\/api\/(state|stamp|notifications\/read|challenges(\/.*)?|players\/[^/]+|nick)$/;
 async function auth(req){
   const t = readToken(cookieOf(req) || req.get('X-Pf-Session')); if (!t) return null;
@@ -868,6 +880,7 @@ async function adminDemo(){
   await adminClearActive();
   await adminInspect();
   await adminRegions();
+  await adminRecent();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
