@@ -111,6 +111,16 @@ select.input:invalid{color:var(--muted)}
 .sec-title h2{font-size:1.25rem;font-weight:700}
 .sec-title button{border:0;background:none;color:var(--on-bg);font-weight:800;font-size:1rem}
 .list{display:flex;flex-direction:column;gap:10px}
+/* small ad for club owners on Главная: the clubs-bot welcome picture with our text over it */
+.club-ad{position:relative;display:flex;align-items:center;min-height:104px;border-radius:20px;overflow:hidden;cursor:pointer;color:#fff;text-align:left;
+  background:#1B3FB0;
+  box-shadow:0 6px 18px rgba(4,10,26,.25)}
+.club-ad::before{content:'';position:absolute;top:0;right:0;bottom:0;width:min(48%,280px);background:url(/clubs-ad.jpg) left center/cover no-repeat;-webkit-mask-image:linear-gradient(90deg,transparent,#000 35%);mask-image:linear-gradient(90deg,transparent,#000 35%)}
+.club-ad .ca-txt{position:relative;padding:14px 16px;max-width:60%;display:flex;flex-direction:column;gap:5px}
+.club-ad .ca-tag{align-self:flex-start;background:var(--ball);color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:99px}
+.club-ad b{font-family:var(--f-big);font-weight:700;font-size:.98rem;line-height:1.15}
+.club-ad small{font-size:.78rem;font-weight:600;color:rgba(255,255,255,.82);line-height:1.25}
+.club-ad .ca-x{position:absolute;top:6px;right:6px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(4,10,26,.45);color:#fff;font-size:1rem;line-height:1;display:grid;place-items:center}
 .list>*,.board>*{flex-shrink:0}
 .item{display:flex;align-items:center;gap:14px;background:var(--card);color:var(--ink);border-radius:20px;padding:13px 14px;min-height:78px}
 .item.hot{box-shadow:inset 0 0 0 2.5px var(--ball)}
@@ -899,9 +909,16 @@ function vHome(){
         return `<div class="item tap${hot ? ' hot' : ''}" data-a="${go}" role="button" tabindex="0">${av(opp)}<div class="txt"><p class="nm">${esc(short(opp))}</p><p class="sub">${esc(sub)}</p></div>
           ${hot ? (m.status === 'check' ? `<button class="btn main sm" data-a="go:matches">Проверить</button>` : `<button class="btn main sm" data-a="ch:${m.id}">Открыть</button>`) : `<button class="btn alt sm" data-a="ch:${m.id}">Открыть</button>`}</div>`;
       }).join('')}</div>` : `<div class="empty"><b>Пока нет вызовов</b>Бросьте первый — кто-нибудь примет</div>`}
+      ${clubAd()}
     </div>
   </div>`;
 }
+/* small banner for club owners: opens the clubs bot only when tapped on purpose; × hides it on this device */
+const AD_KEY = 'pf_club_ad_off';
+const clubAdOff = () => { try { return localStorage.getItem(AD_KEY) === '1'; } catch (e) { return !!S.adOff; } };
+const clubAd = () => !S.clubsBot || S.as || clubAdOff() ? '' : `<div class="club-ad" data-a="club-add" role="button" tabindex="0" aria-label="Добавить свой клуб в список">
+  <div class="ca-txt"><span class="ca-tag">Для клубов</span><b>Добавьте свой клуб в список</b><small>Игроки увидят его, когда соберутся играть</small></div>
+  <button class="ca-x" data-a="club-ad-off" aria-label="Скрыть">✕</button></div>`;
 const bellBtn = () => { const n = unreadNotes().length; return `<button class="bell" data-a="notes" aria-label="Уведомления${n ? ': ' + n + ' новых' : ''}">${I.bell}${n ? `<span class="tag">${n}</span>` : ''}</button>`; };
 function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]; return `${x}:${y}`; }
 
@@ -1252,16 +1269,11 @@ function drawAva(){
 const cityClubs = () => { const m = me(), r = regionOf(m); return (db.clubs || []).filter(c => c.city === m.city || (r && c.region === r)).sort((a, b) => (a.city === m.city ? 0 : 1) - (b.city === m.city ? 0 : 1)); };
 const POP_KEY = 'pf_club_pop2';
 // the field stays read-only (no keyboard) while a tap should open the clubs picker or the one-time invitation
-const placePop = () => cityClubs().length > 0 || (!!S.clubsBot && !popSeen());
+const placePop = () => cityClubs().length > 0;
 const popSeen = () => { try { return localStorage.getItem(POP_KEY) === '1'; } catch (e) { return !!S.popSeen; } };
 const markPopSeen = () => { S.popSeen = true; try { localStorage.setItem(POP_KEY, '1'); } catch (e) {} };
 function pop(html){ closePop(); S.popAt = Date.now(); document.body.insertAdjacentHTML('beforeend', `<div class="pop-scrim" data-a="pop-close"><div class="pop" role="dialog" aria-modal="true">${html}</div></div>`); }
 function closePop(){ document.querySelector('.pop-scrim')?.remove(); }
-function openClubInvite(){
-  pop(`<span class="pop-ic">🏓</span><h3>Есть свой клуб?</h3><p>Добавьте его в список — игроки придут к вам играть.</p>
-    <button class="btn main" data-a="club-add">Добавить клуб</button>
-    <button class="btn alt" data-a="place-type">У меня нет клуба</button>`);
-}
 function openPlacePicker(){
   const list = cityClubs();
   pop(`<h3 class="pop-t">Где играем?</h3>
@@ -1425,7 +1437,8 @@ document.addEventListener('click', e => {
     case 'club': { const c = (db.clubs || []).find(x => String(x.id) === b); if (c && $('#n-place')) { $('#n-place').value = `${c.name}, ${c.address}`; C.place = $('#n-place').value; } closePop(); break; }
     case 'pop-close': if (e.target === el && Date.now() - (S.popAt || 0) > 400) closePop(); break;
     // «Где» tapped: clubs picker, or the one-time invitation for club owners (opened on click, so it works the same on phones)
-    case 'place-open': if (!placePop()) { typePlace(); break; } el.blur(); if (cityClubs().length) openPlacePicker(); else openClubInvite(); break;
+    case 'place-open': if (!placePop()) { typePlace(); break; } el.blur(); openPlacePicker(); break;
+    case 'club-ad-off': S.adOff = true; try { localStorage.setItem(AD_KEY, '1'); } catch (e) {} render(); break;
     case 'place-type': markPopSeen(); closePop(); typePlace(); break;
     case 'club-add': {
       markPopSeen(); closePop();
