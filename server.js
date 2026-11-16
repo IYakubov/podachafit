@@ -366,6 +366,27 @@ async function adminInspect(){
     for (const o of opps) console.log(`  opponent «${o.nick}»: made ${t(o.created_at)}, rating ${o.rating}, ${o.wins}W/${o.losses}L, Telegram ${o.tg ? 'linked' : 'not linked'}, matches ${o.all_m} (with him ${o.with_him})`);
   } catch (e) { console.error('inspect:', e.message); }
 }
+/* admin: REPORT_REGIONS=<any word> prints players and challenges by region/city to the logs on start (read-only) */
+async function adminRegions(){
+  if (!String(process.env.REPORT_REGIONS || '').trim()) return;
+  try {
+    const reg = u => `COALESCE(NULLIF(${u}.region, ''), ${u}.city)`;
+    const players = (await q(`SELECT ${reg('u')} AS region, u.city, count(*)::int AS n FROM users u WHERE NOT u.demo GROUP BY 1, 2 ORDER BY 1, 3 DESC`)).rows;
+    console.log('regions: players by region / city (real players only)');
+    for (const r of players) console.log(`  players ${r.region} / ${r.city}: ${r.n}`);
+    const ms = (await q(`SELECT ${reg('ua')} AS region, ua.city, m.status, count(*)::int AS n,
+        count(*) FILTER (WHERE ub.id IS NOT NULL AND ${reg('ub')} <> ${reg('ua')})::int AS cross_region
+      FROM matches m JOIN users ua ON ua.id = m.a LEFT JOIN users ub ON ub.id = m.b
+      WHERE NOT ua.demo GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`)).rows;
+    console.log('regions: challenges by creator region / city and status');
+    for (const r of ms) console.log(`  challenges ${r.region} / ${r.city} [${r.status}]: ${r.n}${r.cross_region ? ` (opponent from another region: ${r.cross_region})` : ''}`);
+    const out = (await q(`SELECT m.created_at, ua.nick AS a, ua.city AS ca, ub.nick AS b, ub.city AS cb, m.status, m.place, m.sa, m.sb
+      FROM matches m JOIN users ua ON ua.id = m.a LEFT JOIN users ub ON ub.id = m.b
+      WHERE NOT ua.demo AND (ua.city <> 'Ташкент' OR (ub.id IS NOT NULL AND ub.city <> 'Ташкент')) ORDER BY m.created_at`)).rows;
+    console.log(`regions: ${out.length} challenges with a player outside Ташкент`);
+    for (const m of out) console.log(`  ${m.created_at.toISOString().slice(5, 16)} «${m.a}» (${m.ca}) vs «${m.b || '—'}»${m.cb ? ' (' + m.cb + ')' : ''} [${m.status}] at ${m.place}${m.sa != null ? ` score ${m.sa}:${m.sb}` : ''}`);
+  } catch (e) { console.error('regions:', e.message); }
+}
 const ACT_OK = /^\/api\/(state|stamp|notifications\/read|challenges(\/.*)?|players\/[^/]+|nick)$/;
 async function auth(req){
   const t = readToken(cookieOf(req) || req.get('X-Pf-Session')); if (!t) return null;
@@ -840,6 +861,7 @@ async function adminDemo(){
   await findOwner();
   await adminClearActive();
   await adminInspect();
+  await adminRegions();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
