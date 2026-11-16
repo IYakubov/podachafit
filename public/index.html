@@ -876,8 +876,7 @@ function attn(){ return db.matches.filter(m => mine(m) && (m.status === 'booked'
 
 function vHome(){
   const p = me(), rk = rankOf(p.id), t = todo();
-  const same = m => P(m.a).city === p.city ? 0 : regionOf(P(m.a)) === regionOf(p) ? 1 : 2;
-  const open = db.matches.filter(m => m.status === 'open' && m.a !== db.me && m.when > Date.now() - 3 * 3600e3).sort((a, b) => same(a) - same(b) || a.when - b.when);
+  const open = db.matches.filter(m => m.status === 'open' && m.a !== db.me && P(m.a).city === p.city && m.when > Date.now() - 3 * 3600e3).sort((a, b) => a.when - b.when);
   const rows = [...t.map(m => ({ m, hot: true })), ...open.map(m => ({ m }))].slice(0, 4);
   return `
   <div class="top"><div><p class="hello">Привет, ${esc(first(p))}</p><h1>Сыграем?</h1></div>${bellBtn()}</div>
@@ -1156,13 +1155,14 @@ function openNew(who){
 /* players matching what is typed (nickname, then city); with nothing typed — players closest to my level */
 function whoResults(q){
   q = (q || '').trim().replace(/^@/, '').toLowerCase();
-  const mine = me(), others = db.players.filter(p => p.id !== db.me);
+  const mine = me(), others = db.players.filter(p => p.id !== db.me && p.city === mine.city);
   let list;
-  if (!q) list = others.slice().sort((a, b) => (a.city === mine.city ? 0 : 1) - (b.city === mine.city ? 0 : 1) || Math.abs(a.rating - mine.rating) - Math.abs(b.rating - mine.rating)).slice(0, 5);
+  if (!others.length) return `<p class="who-none">В городе ${esc(mine.city || '')} пока нет других игроков. Пригласите друга!</p>`;
+  if (!q) list = others.slice().sort((a, b) => Math.abs(a.rating - mine.rating) - Math.abs(b.rating - mine.rating)).slice(0, 5);
   else list = others.map(p => { const n = p.name.toLowerCase(), c = (p.city || '').toLowerCase();
       return { p, r: n.startsWith(q) ? 0 : n.includes(q) ? 1 : c.startsWith(q) ? 2 : 9 }; })
     .filter(x => x.r < 9).sort((a, b) => a.r - b.r || a.p.name.length - b.p.name.length).slice(0, 8).map(x => x.p);
-  if (!list.length) return `<p class="who-none">Игрок «${esc(q)}» не найден. Проверьте никнейм.</p>`;
+  if (!list.length) return `<p class="who-none">Игрок «${esc(q)}» не найден в городе ${esc(mine.city || '')}. Вызывать можно только игроков из своего города.</p>`;
   return (q ? '' : '<p class="who-hint">Похожий уровень:</p>') + list.map(p => `<button class="who-row" data-a="who:${p.id}">${av(p)}<span class="txt"><b>${esc(p.name)}</b><small>${esc(p.city || '')}${p.city ? ' · ' : ''}${esc(ratingText(p))}</small></span></button>`).join('');
 }
 function drawNew(){
@@ -1170,7 +1170,7 @@ function drawNew(){
   sheet(`${head('Новый вызов')}
     <div class="group"><label>Кому</label>
       <div class="seg"><button data-a="whomode:all" aria-pressed="${C.mode !== 'one'}">Любому игроку</button><button data-a="whomode:one" aria-pressed="${C.mode === 'one'}">Конкретному</button></div>
-      ${C.mode !== 'one' ? '<p class="who-hint">Вызов увидят все игроки — примет первый, кто захочет.</p>'
+      ${C.mode !== 'one' ? `<p class="who-hint">Вызов увидят игроки из города ${esc(me().city || '')} — примет первый, кто захочет.</p>`
         : sel ? `<div class="who-sel">${av(sel)}<span class="txt"><b>${esc(sel.name)}</b><small>${esc(sel.city || '')}${sel.city ? ' · ' : ''}${esc(ratingText(sel))}</small></span><button class="btn alt sm" data-a="who-clear">Изменить</button></div>`
         : `<input class="input" id="who-q" placeholder="Начните вводить никнейм" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(C.q || '')}">
            <div class="who-res" id="who-res">${whoResults(C.q)}</div>`}

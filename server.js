@@ -629,9 +629,9 @@ app.get('/api/state', wrap(async (req, res) => {
   const u = await must(req);
   const players = (await q('SELECT * FROM users ORDER BY rating DESC LIMIT 2000')).rows.map(pub);
   const ms = (await q(`SELECT * FROM matches
-      WHERE (status = 'open' AND when_at > now() - interval '3 hours')
+      WHERE (status = 'open' AND when_at > now() - interval '3 hours' AND a IN (SELECT id FROM users WHERE city = $2))
          OR ((a = $1 OR b = $1) AND (status <> 'done' OR updated_at > now() - interval '120 days'))
-      ORDER BY when_at DESC LIMIT 500`, [u.id])).rows;
+      ORDER BY when_at DESC LIMIT 500`, [u.id, u.city])).rows;
   const notes = (await q(`SELECT id, kind, match_id, actor, created_at, read_at FROM notifications
       WHERE user_id = $1 AND read_at IS NULL AND created_at > now() - interval '30 days' ORDER BY created_at DESC LIMIT 40`, [u.id])).rows
     .map(n => ({ id: +n.id, kind: n.kind, match: n.match_id, actor: n.actor, at: new Date(n.created_at).getTime(), read: !!n.read_at }));
@@ -664,7 +664,9 @@ app.post('/api/challenges', wrap(async (req, res) => {
   if (!c) bad('Проверьте контакт');
   if (who){
     if (who === u.id) bad('Нельзя вызвать самого себя');
-    if (!(await q('SELECT 1 FROM users WHERE id=$1', [who])).rowCount) bad('Игрок не найден');
+    const tgt = (await q('SELECT city FROM users WHERE id=$1', [who])).rows[0];
+    if (!tgt) bad('Игрок не найден');
+    if (tgt.city !== u.city) bad(`Вызывать можно только игроков из своего города (${u.city})`);
   }
   const waiting = (await q(`SELECT count(*)::int n FROM matches WHERE a=$1 AND status IN ('open','invite')`, [u.id])).rows[0].n;
   if (waiting >= 10) bad('У вас уже 10 ожидающих вызовов. Отмените один из них');
@@ -686,6 +688,10 @@ app.post('/api/challenges/:id/accept', wrap(async (req, res) => {
     const m = await lockMatch(db, req.params.id);
     const ok = (m.status === 'open' && m.a !== u.id) || (m.status === 'invite' && m.b === u.id);
     if (!ok) bad('Этот вызов уже неактуален');
+    if (m.status === 'open') {
+      const ac = (await db.query('SELECT city FROM users WHERE id=$1', [m.a])).rows[0];
+      if (!ac || ac.city !== u.city) bad('Этот вызов из другого города');
+    }
     await db.query(`UPDATE matches SET b=$2, cb=$3, status='booked', accepted_at=now(), updated_at=now() WHERE id=$1`, [m.id, u.id, c]);
     await notify(db, m.a, 'accepted', m.id, u.id);
   });
