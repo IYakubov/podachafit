@@ -120,7 +120,6 @@ select.input:invalid{color:var(--muted)}
 .club-ad .ca-tag{align-self:flex-start;background:var(--ball);color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:99px}
 .club-ad b{font-family:var(--f-big);font-weight:700;font-size:.98rem;line-height:1.15}
 .club-ad small{font-size:.78rem;font-weight:600;color:rgba(255,255,255,.82);line-height:1.25}
-.club-ad .ca-x{position:absolute;top:6px;right:6px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(4,10,26,.45);color:#fff;font-size:1rem;line-height:1;display:grid;place-items:center}
 .list>*,.board>*{flex-shrink:0}
 .item{display:flex;align-items:center;gap:14px;background:var(--card);color:var(--ink);border-radius:20px;padding:13px 14px;min-height:78px}
 .item.hot{box-shadow:inset 0 0 0 2.5px var(--ball)}
@@ -913,12 +912,9 @@ function vHome(){
     </div>
   </div>`;
 }
-/* small banner for club owners: opens the clubs bot only when tapped on purpose; × hides it on this device */
-const AD_KEY = 'pf_club_ad_off';
-const clubAdOff = () => { try { return localStorage.getItem(AD_KEY) === '1'; } catch (e) { return !!S.adOff; } };
-const clubAd = () => !S.clubsBot || S.as || clubAdOff() ? '' : `<div class="club-ad" data-a="club-add" role="button" tabindex="0" aria-label="Добавить свой клуб в список">
-  <div class="ca-txt"><span class="ca-tag">Для клубов</span><b>Добавьте свой клуб в список</b><small>Игроки увидят его, когда соберутся играть</small></div>
-  <button class="ca-x" data-a="club-ad-off" aria-label="Скрыть">✕</button></div>`;
+/* small banner for club owners: always shown on Главная, opens the clubs bot only when tapped on purpose */
+const clubAd = () => !S.clubsBot || S.as ? '' : `<div class="club-ad" data-a="club-add" role="button" tabindex="0" aria-label="Добавить свой клуб в список">
+  <div class="ca-txt"><span class="ca-tag">Для клубов</span><b>Добавьте свой клуб в список</b><small>Игроки увидят его, когда соберутся играть</small></div></div>`;
 const bellBtn = () => { const n = unreadNotes().length; return `<button class="bell" data-a="notes" aria-label="Уведомления${n ? ': ' + n + ' новых' : ''}">${I.bell}${n ? `<span class="tag">${n}</span>` : ''}</button>`; };
 function scoreFor(m){ const [x, y] = m.a === db.me ? [m.sa, m.sb] : [m.sb, m.sa]; return `${x}:${y}`; }
 
@@ -1438,7 +1434,6 @@ document.addEventListener('click', e => {
     case 'pop-close': if (e.target === el && Date.now() - (S.popAt || 0) > 400) closePop(); break;
     // «Где» tapped: clubs picker, or the one-time invitation for club owners (opened on click, so it works the same on phones)
     case 'place-open': if (!placePop()) { typePlace(); break; } el.blur(); openPlacePicker(); break;
-    case 'club-ad-off': S.adOff = true; try { localStorage.setItem(AD_KEY, '1'); } catch (e) {} render(); break;
     case 'place-type': markPopSeen(); closePop(); typePlace(); break;
     case 'club-add': {
       markPopSeen(); closePop();
