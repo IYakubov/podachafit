@@ -198,8 +198,8 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
       if (text !== '✅ Отправить заявку') return send(chat, 'Нажмите «✅ Отправить заявку» или «✏️ Заполнить заново».', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
       const open = +(await q(`SELECT count(*) FROM clubs WHERE tg_chat=$1 AND status='pending'`, [chat])).rows[0].count;
       const user = msg.from && msg.from.username ? msg.from.username : null;
-      if (open >= 3) {
-        // not saved: this account already has 3 waiting requests — tell the admin instead of dropping it silently
+      if (open >= 10) {
+        // not saved: this account already has 10 waiting requests — tell the admin instead of dropping it silently
         console.log(`Clubs bot: request «${d.name}» from ${chat} not saved — ${open} requests already waiting`);
         const ad0 = await adminChat();
         if (ad0) await send(ad0, `⚠️ Заявка не сохранена: у ${user ? '@' + h(user) : 'чата ' + chat} уже ${open} ожидающих заявки.\n\n${summary(d)}\n\n/requests — посмотреть, /reject ID — убрать старые`);
