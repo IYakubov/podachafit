@@ -310,7 +310,11 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
 
   const activeClubs = async () => (await q(`SELECT id, name, city, COALESCE(region, '') AS region, address, landmark, tables, price, hours, info,
       CASE WHEN logo IS NULL THEN NULL ELSE left(md5(logo), 8) END AS lv FROM clubs WHERE status='active' ORDER BY name LIMIT 300`)).rows
-    .map(({ lv, ...c }) => Object.assign(c, { region: c.region || RG.REGION_OF[c.city] || '', logo: lv ? `/club-logo/${c.id}?v=${lv}` : null }));
+    .map(({ lv, ...c }) => Object.assign(c, { region: c.region || RG.REGION_OF[c.city] || '', logo: lv ? `/club-logo/${c.id}?v=${lv}` : staticLogo(c.id) }));
+  // logos added by hand live in public/club-logos/<id>.png; one sent to the bot with /logo takes priority
+  const staticLogo = id => {
+    try { const f = require('path').join(__dirname, 'public', 'club-logos', id + '.png'); return require('fs').existsSync(f) ? `/club-logos/${id}.png?v=${Math.round(require('fs').statSync(f).mtimeMs / 1000)}` : null; } catch (e) { return null; }
+  };
 
   // club logos live in Telegram; the app gets them through here (the bot token never reaches the browser)
   const LOGOS = new Map();
