@@ -49,6 +49,13 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
       ALTER TABLE clubs ADD COLUMN IF NOT EXISTS hours text;
       UPDATE clubs SET region='Ташкентская область' WHERE region='Ташкент';
     `);
+    // one-time cleanup: remove the old test / mistaken requests #1–#5 (Понгклаб, Илхам клуб, Baliqbazar, Ayran PONG, Ermak tennis)
+    const done = (await q(`SELECT 1 FROM settings WHERE key='cleanup_2026_11_23'`)).rows.length;
+    if (!done) {
+      const r = await q(`DELETE FROM clubs WHERE id BETWEEN 1 AND 5 AND status <> 'active' RETURNING id, name`);
+      await q(`INSERT INTO settings (key, value) VALUES ('cleanup_2026_11_23', '1') ON CONFLICT (key) DO NOTHING`);
+      console.log('Clubs bot: removed old requests: ' + (r.rows.map(c => `#${c.id} ${c.name}`).join(', ') || 'none'));
+    }
   }
 
   async function setup() {
