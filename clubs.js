@@ -47,6 +47,10 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
       CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text);
       ALTER TABLE clubs ADD COLUMN IF NOT EXISTS region text;
       ALTER TABLE clubs ADD COLUMN IF NOT EXISTS hours text;
+      ALTER TABLE clubs ADD COLUMN IF NOT EXISTS landmark text;
+      ALTER TABLE clubs ADD COLUMN IF NOT EXISTS tables text;
+      ALTER TABLE clubs ADD COLUMN IF NOT EXISTS price text;
+      ALTER TABLE clubs ADD COLUMN IF NOT EXISTS logo text;
       UPDATE clubs SET region='Ташкентская область' WHERE region='Ташкент';
     `);
     // one-time cleanup: remove the old test / mistaken requests #1–#5 (Понгклаб, Илхам клуб, Baliqbazar, Ayran PONG, Ermak tennis)
@@ -76,7 +80,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     await call('setMyName', { name: 'Подача FIT · Клубы' });
     await call('setMyCommands', { commands: [{ command: 'start', description: 'Добавить клуб в Подача FIT' }] });
     await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 Стоимость размещения в списке — 500 000 сум в месяц' });
-    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nСтоимость размещения клуба в списке — 500 000 сум в месяц.\n\nНажмите «Start» и ответьте на 6 вопросов.' });
+    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nСтоимость размещения клуба в списке — 500 000 сум в месяц.\n\nНажмите «Start» и ответьте на 8 коротких вопросов.' });
   }
 
   const adminChat = async () => ((await q(`SELECT value FROM settings WHERE key='clubs_admin_chat'`)).rows[0] || {}).value || null;
@@ -86,7 +90,41 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
   const pairs = list => { const rows = []; for (let i = 0; i < list.length; i += 2) rows.push(list.slice(i, i + 2)); return rows; };
   const regionKb = () => kb(pairs(RG.regionNames));
   const townKb = region => kb(pairs(RG.citiesOf(region)).concat([['⬅️ Другой регион']]));
-  const summary = d => `<b>${h(d.name)}</b>\n📍 ${h(d.city)}${d.region && d.region !== d.city ? ' (' + h(d.region) + ')' : ''}, ${h(d.address)}\n🏓 ${h(d.info || '—')}${d.hours ? '\n🕒 ' + h(d.hours) : ''}\n📞 ${h(d.contact)}`;
+  const summary = d => [
+    `<b>${h(d.name)}</b>`,
+    `📍 Адрес: ${h(d.city)}${d.region && d.region !== d.city ? ' (' + h(d.region) + ')' : ''}, ${h(d.address)}`,
+    d.landmark && `🧭 Ориентир: ${h(d.landmark)}`,
+    d.tables && `🏓 Столов: ${h(d.tables)}`,
+    d.price && `💰 Цена: ${h(d.price)}`,
+    d.info && `ℹ️ ${h(d.info)}`,
+    d.hours && `🕒 Часы: ${h(d.hours)}`,
+    d.logo && '🖼 Логотип: есть',
+    d.contact && `📞 ${h(d.contact)}`,
+  ].filter(Boolean).join('\n');
+  // admin card: with the logo as a photo when there is one
+  const sendCard = (chat, c, text) => c.logo
+    ? call('sendPhoto', { chat_id: chat, photo: c.logo, caption: text.slice(0, 1000), parse_mode: 'HTML' }).then(r => r && r.ok ? r : send(chat, text))
+    : send(chat, text);
+  const sum = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  // a club's logo: the smallest photo size that is still sharp in the app (≥256px), else the biggest
+  const photoId = msg => {
+    if (msg.photo && msg.photo.length) { const ok = msg.photo.filter(p => p.width >= 256); return (ok[0] || msg.photo[msg.photo.length - 1]).file_id; }
+    if (msg.document && /^image\//.test(msg.document.mime_type || '')) return msg.document.file_id;
+    return null;
+  };
+  const Q = {
+    address: '<b>3/8.</b> Адрес? Улица и дом.\n<i>ул. Амира Темура, 15</i>',
+    landmark: '<b>4/8.</b> Ориентир? Как найти вход.\n<i>напротив метро «Минор», 2 этаж</i>',
+    tables: '<b>5/8.</b> Сколько столов?',
+    price: '<b>6/8.</b> Цена за час одного стола?\n<i>40 000</i>',
+    hours: '<b>7/8.</b> Часы работы?\n<i>Пн–Сб 10:00–22:00, Вс 12:00–20:00</i>',
+    logo: '<b>8/8.</b> Логотип клуба? Пришлите его картинкой — игроки увидят его в списке.',
+    contact: '<b>8/8.</b> Ваш телефон или @username? Его видим только мы.',
+  };
+  const SKIP = kb([['Пропустить']]);
+  const TABLES_KB = kb([['1', '2', '3', '4'], ['5', '6', '8', '10+'], ['Пропустить']]);
+  const HOURS_KB = kb([['Ежедневно 09:00–22:00'], ['Круглосуточно']]);
+  const CONTACT_KB = kb([[{ text: '📱 Отправить мой номер', request_contact: true }]]);
   const clip = (t, n) => String(t || '').trim().slice(0, n);
 
   let WELCOME_ID = null;
@@ -105,13 +143,15 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
   }
   async function start(chat) {
     await setStep(chat, 1, {});
-    const text = '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>500 000 сум в месяц</b>.\n\n<b>1/6.</b> Название клуба или зала?';
+    const text = '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>500 000 сум в месяц</b>.\n\n<b>1/8.</b> Название клуба или зала?';
     // the welcome picture with the text as its caption: uploaded once from disk, then reused by its Telegram file_id
     const r = await sendWelcomePhoto(chat, text);
     if (!r || !r.ok) { console.error('Clubs bot: welcome photo failed:', r && r.description); return send(chat, text, NOKB); }
   }
 
-  async function admin(chat, text, from) {
+  const FIELDS = { название: 'name', адрес: 'address', ориентир: 'landmark', столы: 'tables', цена: 'price', часы: 'hours', инфо: 'info' };
+  const EDIT_HELP = 'Изменить: <code>/edit ID поле текст</code>\nПоля: название, адрес, ориентир, столы, цена, часы, инфо («-» — очистить)\nЛоготип: картинка с подписью <code>/logo ID</code>';
+  async function admin(chat, text, from, photo) {
     const [cmd, arg] = text.split(/\s+/, 2);
     if (cmd === '/requests') {
       const r = (await q(`SELECT * FROM clubs WHERE status='pending' ORDER BY id LIMIT 20`)).rows;
@@ -119,9 +159,30 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     }
     if (cmd === '/clubs') {
       const r = (await q(`SELECT * FROM clubs WHERE status='active' ORDER BY city, name LIMIT 100`)).rows;
-      return send(chat, r.length ? r.map(c => `#${c.id} <b>${h(c.name)}</b> — ${h(c.city)}, ${h(c.address)}`).join('\n') + '\n\n/remove ID — убрать из приложения' : 'В приложении пока нет клубов.');
+      return send(chat, r.length ? r.map(c => `#${c.id} <b>${h(c.name)}</b> — ${h(c.city)}, ${h(c.address)}${c.logo ? ' 🖼' : ''}`).join('\n') + '\n\n/club ID — карточка и правка\n/remove ID — убрать из приложения' : 'В приложении пока нет клубов.');
     }
     const id = parseInt(arg, 10);
+    if (cmd === '/club') {
+      const c = id && (await q('SELECT * FROM clubs WHERE id=$1', [id])).rows[0];
+      return c ? sendCard(chat, c, `#${c.id} · ${c.status}\n\n${summary(c)}\n\n${EDIT_HELP}`) : send(chat, 'Пример: /club 6');
+    }
+    if (cmd === '/edit') {
+      // /edit 6 ориентир напротив метро «Минор»   ("-" clears the field)
+      const m = text.match(/^\/edit\s+(\d+)\s+(\S+)\s+([\s\S]+)$/);
+      const col = m && FIELDS[m[2].toLowerCase()];
+      if (!m || !col) return send(chat, EDIT_HELP);
+      const v = m[3].trim() === '-' ? null : m[3].trim().slice(0, 120);
+      if (v === null && ['name', 'address'].includes(col)) return send(chat, 'Название и адрес нельзя оставить пустыми.');
+      const c = (await q(`UPDATE clubs SET ${col}=$2 WHERE id=$1 RETURNING *`, [+m[1], v])).rows[0];
+      return c ? send(chat, `✏️ #${c.id} обновлён\n\n${summary(c)}`) : send(chat, `Клуб #${m[1]} не найден.`);
+    }
+    if (cmd === '/logo') {
+      // photo with caption «/logo 6» sets the logo; «/logo 6 -» removes it
+      const pid = photo, clear = /\s-\s*$/.test(text);
+      if (!id || (!pid && !clear)) return send(chat, 'Пришлите картинку с подписью <code>/logo 6</code>, или <code>/logo 6 -</code> чтобы убрать логотип.');
+      const c = (await q('UPDATE clubs SET logo=$2 WHERE id=$1 RETURNING *', [id, clear ? null : pid])).rows[0];
+      return c ? sendCard(chat, c, `🖼 #${c.id} «${h(c.name)}»: логотип ${clear ? 'убран' : 'обновлён'}`) : send(chat, `Клуб #${id} не найден.`);
+    }
     if (['/approve', '/reject', '/remove'].includes(cmd)) {
       if (!id) return send(chat, `Укажите номер заявки: ${cmd} 12`);
       const to = { '/approve': 'active', '/reject': 'rejected', '/remove': 'removed' }[cmd];
@@ -138,17 +199,17 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     res.json({ ok: true });
     const msg = req.body && req.body.message;
     if (!msg || !msg.chat || msg.chat.type !== 'private') return;
-    const chat = msg.chat.id, text = typeof msg.text === 'string' ? msg.text.trim() : '';
+    const chat = msg.chat.id, text = typeof msg.text === 'string' ? msg.text.trim() : typeof msg.caption === 'string' ? msg.caption.trim() : '';
     // admin: "/admin <code>" once, then /requests /approve /reject /clubs /remove
     if (ADMIN_CODE && /^\/admin\s+/.test(text)) {
       if (text.split(/\s+/)[1] !== ADMIN_CODE) return send(chat, 'Неверный код.');
       await q(`INSERT INTO settings (key, value) VALUES ('clubs_admin_chat', $1) ON CONFLICT (key) DO UPDATE SET value=$1`, [String(chat)]);
-      await send(chat, '✅ Этот чат получает заявки клубов.\n\n/requests — новые заявки\n/approve ID — добавить в приложение\n/reject ID — отклонить\n/clubs — клубы в приложении\n/remove ID — убрать');
+      await send(chat, '✅ Этот чат получает заявки клубов.\n\n/requests — новые заявки\n/approve ID — добавить в приложение\n/reject ID — отклонить\n/clubs — клубы в приложении\n/club ID — карточка клуба\n/edit ID поле текст — исправить\n/logo ID — подпись к картинке-логотипу\n/remove ID — убрать');
       const waiting = +(await q(`SELECT count(*) FROM clubs WHERE status='pending'`)).rows[0].count;
       if (waiting) await admin(chat, '/requests');
       return;
     }
-    if (String(chat) === String(await adminChat()) && /^\/(requests|approve|reject|clubs|remove)\b/.test(text)) return admin(chat, text, msg.from);
+    if (String(chat) === String(await adminChat()) && /^\/(requests|approve|reject|clubs|remove|club|edit|logo)\b/.test(text)) return admin(chat, text, msg.from, photoId(msg));
     if (/^\/start/.test(text) || text === '✏️ Заполнить заново') return start(chat);
 
     const st = await getStep(chat), d = st.data || {};
@@ -156,37 +217,54 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     if (st.step === 1) {
       if (!text) return send(chat, 'Напишите название клуба текстом.');
       d.name = clip(text, 60); await setStep(chat, 2, d);
-      return send(chat, '<b>2/6.</b> Регион?', regionKb());
+      return send(chat, '<b>2/8.</b> Регион?', regionKb());
     }
     if (st.step === 2) {
       if (!RG.regionNames.includes(text)) return send(chat, 'Выберите регион кнопкой ниже.', regionKb());
       d.region = text;
-      if (RG.citiesOf(text).length === 1) { d.city = RG.citiesOf(text)[0]; await setStep(chat, 3, d); return send(chat, '<b>3/6.</b> Адрес или ориентир?\n<i>ул. Амира Темура, 15, 2 этаж</i>', NOKB); }
+      if (RG.citiesOf(text).length === 1) { d.city = RG.citiesOf(text)[0]; await setStep(chat, 3, d); return send(chat, Q.address, NOKB); }
       await setStep(chat, 22, d);
       return send(chat, 'Город или район? Выберите кнопкой или напишите название.', townKb(text));
     }
     if (st.step === 22) {
-      if (text === '⬅️ Другой регион') { await setStep(chat, 2, d); return send(chat, '<b>2/6.</b> Регион?', regionKb()); }
+      if (text === '⬅️ Другой регион') { await setStep(chat, 2, d); return send(chat, '<b>2/8.</b> Регион?', regionKb()); }
       const town = text.replace(/\s+/g, ' ');
       if (!RG.citiesOf(d.region).includes(town) && !RG.TOWN_RE.test(town)) return send(chat, 'Выберите город кнопкой или напишите название буквами.', townKb(d.region));
       d.city = town; await setStep(chat, 3, d);
-      return send(chat, '<b>3/6.</b> Адрес или ориентир?\n<i>ул. Амира Темура, 15, 2 этаж</i>', NOKB);
+      return send(chat, Q.address, NOKB);
     }
     if (st.step === 3) {
-      if (text.length < 4) return send(chat, 'Напишите адрес чуть подробнее.');
-      d.address = clip(text, 120); await setStep(chat, 4, d);
-      return send(chat, '<b>4/6.</b> Сколько столов и цена за час?\n<i>6 столов, 40 000 сум/час</i>', kb([['Пропустить']]));
+      if (text.length < 4) return send(chat, 'Напишите адрес чуть подробнее: улица и дом.');
+      d.address = clip(text, 120); await setStep(chat, 8, d);
+      return send(chat, Q.landmark, SKIP);
+    }
+    if (st.step === 8) {
+      d.landmark = text === 'Пропустить' ? '' : clip(text, 120); await setStep(chat, 4, d);
+      return send(chat, Q.tables, TABLES_KB);
     }
     if (st.step === 4) {
-      d.info = text === 'Пропустить' ? '' : clip(text, 120); await setStep(chat, 7, d);
-      return send(chat, '<b>5/6.</b> Часы работы?\n<i>Пн–Сб 10:00–22:00, Вс 12:00–20:00</i>', kb([['Ежедневно 09:00–22:00'], ['Круглосуточно']]));
+      const m = text.match(/^\s*(\d{1,3})\s*(\+)?/);
+      if (text !== 'Пропустить' && !m) return send(chat, 'Напишите число столов цифрой, например: 6', TABLES_KB);
+      d.tables = m ? m[1] + (m[2] || '') : ''; await setStep(chat, 9, d);
+      return send(chat, Q.price, SKIP);
     }
-    // working hours (internal step 7, so owners already mid-form keep working after the update)
+    if (st.step === 9) {
+      // «40000» / «40 000» → «40 000 сум/час»; anything else is kept as written
+      const n = text.replace(/[\s.,]/g, '');
+      d.price = text === 'Пропустить' ? '' : /^\d{3,7}$/.test(n) ? sum(n) + ' сум/час' : clip(text, 60);
+      await setStep(chat, 7, d);
+      return send(chat, Q.hours, HOURS_KB);
+    }
     if (st.step === 7) {
-      if (text.length < 3) return send(chat, 'Напишите часы работы, например: <i>Пн–Сб 10:00–22:00</i>', kb([['Ежедневно 09:00–22:00'], ['Круглосуточно']]));
+      if (text.length < 3) return send(chat, 'Напишите часы работы, например: <i>Пн–Сб 10:00–22:00</i>', HOURS_KB);
       d.hours = clip(text, 80); await setStep(chat, 5, d);
-      return send(chat, '<b>6/6.</b> Ваш телефон или @username?',
-        kb([[{ text: '📱 Отправить мой номер', request_contact: true }]]));
+      return send(chat, Q.contact, CONTACT_KB);
+    }
+    if (st.step === 10) {
+      const id = photoId(msg);
+      if (!id && text !== 'Пропустить') return send(chat, 'Пришлите логотип картинкой или нажмите «Пропустить».', SKIP);
+      d.logo = id || ''; await setStep(chat, 5, d);
+      return send(chat, Q.contact, CONTACT_KB);
     }
     if (st.step === 5) {
       const c = msg.contact && msg.contact.phone_number ? '+' + String(msg.contact.phone_number).replace(/^\+/, '') : clip(text, 60);
@@ -205,19 +283,41 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
         if (ad0) await send(ad0, `⚠️ Заявка не сохранена: у ${user ? '@' + h(user) : 'чата ' + chat} уже ${open} ожидающих заявки.\n\n${summary(d)}\n\n/requests — посмотреть, /reject ID — убрать старые`);
         await setStep(chat, 0, {}); return send(chat, 'Ваша заявка уже у нас. Мы свяжемся с вами, чтобы всё обсудить.', NOKB);
       }
-      const c = (await q(`INSERT INTO clubs (name, city, region, address, info, hours, contact, tg_user, tg_chat) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-        [d.name, d.city, d.region || RG.REGION_OF[d.city] || null, d.address, d.info || null, d.hours || null, d.contact, user, chat])).rows[0];
+      const c = (await q(`INSERT INTO clubs (name, city, region, address, landmark, tables, price, info, hours, logo, contact, tg_user, tg_chat)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        [d.name, d.city, d.region || RG.REGION_OF[d.city] || null, d.address, d.landmark || null, d.tables || null, d.price || null,
+         d.info || null, d.hours || null, d.logo || null, d.contact, user, chat])).rows[0];
       console.log(`Clubs bot: new request #${c.id} «${c.name}» from ${chat}`);
       await setStep(chat, 0, {});
       await send(chat, 'Спасибо! Заявка отправлена 🙌\nМы свяжемся с вами, чтобы всё обсудить.', NOKB);
       const ad = await adminChat();
-      if (ad) await send(ad, `🆕 Заявка клуба #${c.id}\n\n${summary(c)}${user ? '\n✈️ @' + h(user) : ''}\n\n/approve ${c.id} — добавить в приложение\n/reject ${c.id} — отклонить`);
+      if (ad) await sendCard(ad, c, `🆕 Заявка клуба #${c.id}\n\n${summary(c)}${user ? '\n✈️ @' + h(user) : ''}\n\n/approve ${c.id} — добавить в приложение\n/reject ${c.id} — отклонить`);
       else console.log(`Clubs bot: new request #${c.id} (no admin chat yet — send "/admin <code>" to the clubs bot)`);
       return;
     }
   }));
 
-  const activeClubs = async () => (await q(`SELECT id, name, city, COALESCE(region, '') AS region, address FROM clubs WHERE status='active' ORDER BY name LIMIT 300`)).rows
-    .map(c => Object.assign(c, { region: c.region || RG.REGION_OF[c.city] || '' }));
+  const activeClubs = async () => (await q(`SELECT id, name, city, COALESCE(region, '') AS region, address, landmark, tables, price, hours, info,
+      CASE WHEN logo IS NULL THEN NULL ELSE left(md5(logo), 8) END AS lv FROM clubs WHERE status='active' ORDER BY name LIMIT 300`)).rows
+    .map(({ lv, ...c }) => Object.assign(c, { region: c.region || RG.REGION_OF[c.city] || '', logo: lv ? `/club-logo/${c.id}?v=${lv}` : null }));
+
+  // club logos live in Telegram; the app gets them through here (the bot token never reaches the browser)
+  const LOGOS = new Map();
+  app.get('/club-logo/:id', wrap(async (req, res) => {
+    const c = (await q(`SELECT logo FROM clubs WHERE id=$1 AND status='active'`, [parseInt(req.params.id, 10) || 0])).rows[0];
+    if (!c || !c.logo) return res.sendStatus(404);
+    let img = LOGOS.get(c.logo);
+    if (!img) {
+      const f = await call('getFile', { file_id: c.logo });
+      if (!f || !f.ok) return res.sendStatus(404);
+      const r = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${f.result.file_path}`);
+      if (!r.ok) return res.sendStatus(404);
+      img = { type: r.headers.get('content-type') || 'image/jpeg', buf: Buffer.from(await r.arrayBuffer()) };
+      if (img.buf.length > 2e6) return res.sendStatus(413);
+      if (LOGOS.size > 300) LOGOS.clear();
+      LOGOS.set(c.logo, img);
+    }
+    res.set({ 'Content-Type': /^image\//.test(img.type) ? img.type : 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }).send(img.buf);
+  }));
   return { migrate, setup, activeClubs, botName: () => NAME };
 };
