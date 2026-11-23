@@ -60,8 +60,8 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     }
     await call('setMyName', { name: 'Подача FIT · Клубы' });
     await call('setMyCommands', { commands: [{ command: 'start', description: 'Добавить клуб в Подача FIT' }] });
-    await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 Стоимость размещения в списке — 1 000 000 сум в месяц' });
-    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nСтоимость размещения клуба в списке — 1 000 000 сум в месяц.\n\nНажмите «Start» и ответьте на 6 вопросов.' });
+    await call('setMyShortDescription', { short_description: 'Добавьте клуб или столы в аренду в Подача FIT 🏓 Стоимость размещения в списке — 500 000 сум в месяц' });
+    await call('setMyDescription', { description: '🏓 Ваш клуб — в списке мест для игры в Подача FIT. Игроки вашего города выберут его в один тап.\n\nСтоимость размещения клуба в списке — 500 000 сум в месяц.\n\nНажмите «Start» и ответьте на 6 вопросов.' });
   }
 
   const adminChat = async () => ((await q(`SELECT value FROM settings WHERE key='clubs_admin_chat'`)).rows[0] || {}).value || null;
@@ -90,7 +90,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
   }
   async function start(chat) {
     await setStep(chat, 1, {});
-    const text = '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>1 000 000 сум в месяц</b>.\n\n<b>1/6.</b> Название клуба или зала?';
+    const text = '🏓 Добавим ваш клуб в <b>Подача FIT</b> — игроки выберут его в один тап.\nСтоимость размещения клуба в списке — <b>500 000 сум в месяц</b>.\n\n<b>1/6.</b> Название клуба или зала?';
     // the welcome picture with the text as its caption: uploaded once from disk, then reused by its Telegram file_id
     const r = await sendWelcomePhoto(chat, text);
     if (!r || !r.ok) { console.error('Clubs bot: welcome photo failed:', r && r.description); return send(chat, text, NOKB); }
@@ -177,7 +177,7 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
       const c = msg.contact && msg.contact.phone_number ? '+' + String(msg.contact.phone_number).replace(/^\+/, '') : clip(text, 60);
       if (!c) return send(chat, 'Отправьте номер кнопкой или напишите контакт текстом.');
       d.contact = c; await setStep(chat, 6, d);
-      return send(chat, 'Проверьте:\n\n' + summary(d) + '\n\nСтоимость размещения в списке — 1 000 000 сум в месяц.', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
+      return send(chat, 'Проверьте:\n\n' + summary(d) + '\n\nСтоимость размещения в списке — 500 000 сум в месяц.', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
     }
     if (st.step === 6) {
       if (text !== '✅ Отправить заявку') return send(chat, 'Нажмите «✅ Отправить заявку» или «✏️ Заполнить заново».', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
