@@ -339,10 +339,12 @@ select.input:invalid{color:var(--muted)}
 .pick{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:14px 16px;color:var(--ink);cursor:pointer}
 .pick b{font-weight:800;font-size:1.05rem}.pick small{color:var(--muted);font-weight:600;font-size:.9rem}
 .pick.own{border-style:dashed}
-/* a listed club in «Где играем?»: a location pin first (club logos later), then the name and two short lines */
+/* a listed club in «Где играем?»: the club's logo (or a location pin) first, then the name and two short lines */
 .pick.club{flex-direction:row;align-items:center;gap:12px;padding:12px 14px}
 .cl-logo{flex:none;width:40px;height:40px;border-radius:12px;overflow:hidden;display:grid;place-items:center;background:var(--ball-soft);color:var(--ball)}
 .cl-logo svg{width:22px;height:22px}
+.cl-logo.has-img{background:#fff;border:1px solid var(--line)}
+.cl-logo img{width:100%;height:100%;object-fit:cover;display:block}
 .cl-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .cl-txt b{font-weight:800;font-size:1rem;line-height:1.2}
 .pick .cl-row{font-size:.85rem;line-height:1.3;color:var(--ink);font-weight:600;overflow-wrap:anywhere}
@@ -1283,7 +1285,7 @@ function clubCard(c){
   const row = (k, v) => v ? `<small class="cl-row"><i>${k}:</i> ${esc(v)}</small>` : '';
   const addr = c.city && !String(c.address).includes(c.city) ? `${c.city}, ${c.address}` : c.address;
   return `<button class="pick club" data-a="club:${c.id}">
-    <span class="cl-logo">${PIN}</span>
+    <span class="cl-logo${c.logo ? ' has-img' : ''}">${c.logo ? `<img src="${esc(c.logo)}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.parentNode.innerHTML=PIN">` : PIN}</span>
     <span class="cl-txt"><b>${esc(c.name)}</b>${row('Адрес', addr)}${row('Ориентир', c.landmark)}</span></button>`;
 }
 function openPlacePicker(){
