@@ -156,6 +156,7 @@ async function migrate(){
       expires_at timestamptz NOT NULL
     );
   `);
+  await CLUBS.linkMigrate();   // matches.club_id for the clubs' statistics (never stops the app from starting)
 }
 
 /* ---------------- in-app notifications ---------------- */
@@ -684,6 +685,7 @@ app.post('/api/challenges', wrap(async (req, res) => {
   if (waiting >= 10) bad('У вас уже 10 ожидающих вызовов. Отмените один из них');
   const r = await q(`INSERT INTO matches (a, b, status, bo, when_at, place, ca) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
     [u.id, who || null, who ? 'invite' : 'open', +bo, t, place, c]);
+  CLUBS.linkMatch(r.rows[0].id, place, u.city, u.region);   // statistics only: runs after, can't fail the challenge
   if (who) await notify(pool, who, 'invite', r.rows[0].id, u.id);
   else tgLater(() => tgCityAlert(r.rows[0].id));
   res.json({ ok: true });
@@ -881,6 +883,7 @@ async function adminDemo(){
   await adminInspect();
   await adminRegions();
   await adminRecent();
+  await CLUBS.logStats();
   housekeeping(); setInterval(housekeeping, 5 * 60e3);
   tgSetup().catch(e => console.error('telegram setup:', e.message));
   CLUBS.setup().catch(e => console.error('clubs bot setup:', e.message));
