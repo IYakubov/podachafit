@@ -190,10 +190,17 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     if (st.step === 6) {
       if (text !== '✅ Отправить заявку') return send(chat, 'Нажмите «✅ Отправить заявку» или «✏️ Заполнить заново».', kb([['✅ Отправить заявку'], ['✏️ Заполнить заново']]));
       const open = +(await q(`SELECT count(*) FROM clubs WHERE tg_chat=$1 AND status='pending'`, [chat])).rows[0].count;
-      if (open >= 3) { await setStep(chat, 0, {}); return send(chat, 'Ваша заявка уже у нас. Мы свяжемся с вами, чтобы всё обсудить.', NOKB); }
       const user = msg.from && msg.from.username ? msg.from.username : null;
+      if (open >= 3) {
+        // not saved: this account already has 3 waiting requests — tell the admin instead of dropping it silently
+        console.log(`Clubs bot: request «${d.name}» from ${chat} not saved — ${open} requests already waiting`);
+        const ad0 = await adminChat();
+        if (ad0) await send(ad0, `⚠️ Заявка не сохранена: у ${user ? '@' + h(user) : 'чата ' + chat} уже ${open} ожидающих заявки.\n\n${summary(d)}\n\n/requests — посмотреть, /reject ID — убрать старые`);
+        await setStep(chat, 0, {}); return send(chat, 'Ваша заявка уже у нас. Мы свяжемся с вами, чтобы всё обсудить.', NOKB);
+      }
       const c = (await q(`INSERT INTO clubs (name, city, region, address, info, hours, contact, tg_user, tg_chat) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
         [d.name, d.city, d.region || RG.REGION_OF[d.city] || null, d.address, d.info || null, d.hours || null, d.contact, user, chat])).rows[0];
+      console.log(`Clubs bot: new request #${c.id} «${c.name}» from ${chat}`);
       await setStep(chat, 0, {});
       await send(chat, 'Спасибо! Заявка отправлена 🙌\nМы свяжемся с вами, чтобы всё обсудить.', NOKB);
       const ad = await adminChat();
