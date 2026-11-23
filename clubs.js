@@ -15,7 +15,9 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     if (!TOKEN) return null;
     try {
       const r = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      return await r.json();
+      const j = await r.json();
+      if (j && j.ok === false) console.error('Clubs bot:', method, 'to', body && body.chat_id, 'refused:', j.description);
+      return j;
     } catch (e) { console.error('clubs bot:', method, e.message); return null; }
   }
   const kb = rows => ({ keyboard: rows.map(r => r.map(t => typeof t === 'string' ? { text: t } : t)), resize_keyboard: true, one_time_keyboard: true });
@@ -54,6 +56,12 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
     const me = await call('getMe', {});
     if (!me || !me.ok) { console.error('Clubs bot: token rejected'); return; }
     NAME = me.result.username;
+    try {
+      const ad = await adminChat();
+      const r = (await q(`SELECT id, name, status, tg_chat, created_at FROM clubs ORDER BY id DESC LIMIT 8`)).rows;
+      console.log('Clubs bot: admin chat ' + (ad ? 'set (' + ad + ')' : 'NOT set — send "/admin <code>" to the clubs bot'));
+      console.log('Clubs bot: latest requests: ' + (r.map(c => `#${c.id} ${c.name} [${c.status}] from ${c.tg_chat} ${new Date(c.created_at).toISOString().slice(0, 16)}`).join(' | ') || 'none'));
+    } catch (e) { console.error('Clubs bot: status check failed:', e.message); }
     if (/^https:/.test(APP_URL)) {
       const r = await call('setWebhook', { url: `${APP_URL}/tgc/${HOOK}`, secret_token: HOOK, allowed_updates: ['message'], drop_pending_updates: true });
       console.log('Clubs bot: @' + NAME + (r && r.ok ? ' ready' : ' webhook failed: ' + (r && r.description)));
