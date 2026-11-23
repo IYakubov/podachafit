@@ -24,6 +24,12 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
   const NOKB = { remove_keyboard: true };
   const send = (chat, html, markup) => call('sendMessage', { chat_id: chat, text: html, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: markup });
 
+  const splitLandmark = t => {
+    const m = String(t || '').match(/^(.*?)[\s,;.(-]*(?:ориентир|orientir|mo[‘'`ʻ’]?ljal)[\s:,.\-–—)]*(.+)$/i);
+    if (!m) return null;
+    const address = m[1].replace(/[\s,;.(-]+$/, '').trim(), landmark = m[2].replace(/[\s)]+$/, '').trim();
+    return address.length >= 3 && landmark ? { address, landmark } : null;
+  };
   async function migrate() {
     await q(`
       CREATE TABLE IF NOT EXISTS clubs (
@@ -53,6 +59,11 @@ module.exports = function clubs({ app, q, wrap, APP_URL, SECRET, RG }) {
       ALTER TABLE clubs ADD COLUMN IF NOT EXISTS logo text;
       UPDATE clubs SET region='Ташкентская область' WHERE region='Ташкент';
     `);
+    // clubs from the old one-field form: «Богиравон 4 Ориентир Малика бозор» → address + landmark
+    for (const c of (await q(`SELECT id, address FROM clubs WHERE landmark IS NULL`)).rows) {
+      const sp = splitLandmark(c.address);
+      if (sp) { await q('UPDATE clubs SET address=$2, landmark=$3 WHERE id=$1', [c.id, sp.address, sp.landmark]); console.log(`Clubs bot: #${c.id} split into address «${sp.address}» + landmark «${sp.landmark}»`); }
+    }
     // one-time cleanup: remove the old test / mistaken requests #1–#5 (Понгклаб, Илхам клуб, Baliqbazar, Ayran PONG, Ermak tennis)
     const done = (await q(`SELECT 1 FROM settings WHERE key='cleanup_2026_11_23'`)).rows.length;
     if (!done) {
